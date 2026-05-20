@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sarvam-KAME Voice Agent</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:#0a0a0f;color:#e2e2e2;
+     min-height:100vh;padding:20px;max-width:860px;margin:0 auto}
+
+h1{font-size:18px;font-weight:600;color:#fff;margin-bottom:2px}
+.sub{font-size:12px;color:#555;margin-bottom:20px}
+
+/* mode tabs */
+.tabs{display:flex;gap:8px;margin-bottom:20px}
+.tab{padding:7px 18px;border-radius:6px;border:1px solid #2a2a2a;
+     background:transparent;color:#666;cursor:pointer;font-size:13px;
+     transition:all .2s}
+.tab.active{background:#1a1a30;border-color:#4a44c0;color:#fff}
+
+/* mic button */
+.mic-row{display:flex;align-items:center;gap:14px;margin-bottom:20px}
+#mic{width:52px;height:52px;border-radius:50%;border:2px solid #333;
+     background:#111;cursor:pointer;font-size:20px;transition:all .2s}
+#mic.rec{border-color:#c0392b;background:#1a0000;
+         animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(192,57,43,.5)}
+                 50%{box-shadow:0 0 0 10px rgba(192,57,43,0)}}
+#status-txt{font-size:13px;color:#777}
+#mode-txt{font-size:11px;color:#444;margin-top:2px}
+
+/* panels */
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.panel{background:#111;border:1px solid #1e1e1e;border-radius:8px;padding:14px}
+.panel h3{font-size:10px;color:#555;text-transform:uppercase;
+          letter-spacing:.08em;margin-bottom:10px}
+.box{background:#0a0a0a;border:1px solid #1a1a1a;border-radius:5px;
+     padding:10px;font-size:13px;color:#bbb;min-height:56px;
+     line-height:1.6;word-break:break-word}
+.box.green{background:#0a150a;border-color:#1a3a1a;color:#88cc88}
+
+/* latency rows */
+.lrow{display:flex;justify-content:space-between;margin-bottom:7px;font-size:12px}
+.lrow .lbl{color:#666}.lrow .val{font-weight:500}
+.bar-wrap{height:3px;background:#1a1a1a;border-radius:2px;margin-bottom:10px}
+.bar{height:3px;border-radius:2px;transition:width .5s ease;width:0%}
+.bar.red{background:#c0392b}.bar.green{background:#27ae60}
+
+/* comparison */
+.cmp{background:#111;border:1px solid #1e1e1e;border-radius:8px;padding:14px}
+.cmp h3{font-size:10px;color:#555;text-transform:uppercase;
+        letter-spacing:.08em;margin-bottom:12px}
+.crow{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.crow .clbl{font-size:11px;color:#888;width:90px;flex-shrink:0}
+.ctrack{flex:1;height:7px;background:#1a1a1a;border-radius:4px;overflow:hidden}
+.cfill{height:100%;border-radius:4px;transition:width .8s ease;width:0%}
+.cfill.red{background:#c0392b}.cfill.green{background:#27ae60}
+.cval{font-size:11px;width:55px;text-align:right}
+.note{font-size:10px;color:#444;margin-top:6px}
+
+/* kame badge */
+.badge{display:inline-block;padding:2px 7px;border-radius:3px;
+       font-size:10px;font-weight:600}
+.badge.green{background:#0d2a0d;color:#88cc88}
+.badge.red{background:#2a0d0d;color:#cc8888}
+</style>
+</head>
+<body>
+
+<h1>Sarvam-KAME Voice Agent</h1>
+<p class="sub">KAME tandem architecture — immediate Moshi response + Sarvam oracle back-end</p>
+
+<div class="tabs">
+  <button class="tab" id="t-cas" onclick="setMode('cascaded')">
+    Mode A — Cascaded (baseline)
+  </button>
+  <button class="tab active" id="t-kame" onclick="setMode('kame')">
+    Mode B — KAME tandem
+  </button>
+</div>
+
+<div class="mic-row">
+  <button id="mic" onclick="toggle()">🎤</button>
+  <div>
+    <div id="status-txt">Click mic to start</div>
+    <div id="mode-txt">KAME mode</div>
+  </div>
+</div>
+
+<div class="grid">
+  <div class="panel">
+    <h3>Transcript</h3>
+    <div class="box" id="transcript">Your speech appears here...</div>
+    <h3 style="margin-top:12px">Response <span class="badge green" id="mode-badge">KAME</span></h3>
+    <div class="box green" id="response">AI response appears here...</div>
+  </div>
+
+  <div class="panel">
+    <h3>Latency breakdown</h3>
+
+    <div class="lrow">
+      <span class="lbl">First audio (KAME)</span>
+      <span class="val" id="v-first">—</span>
+    </div>
+    <div class="bar-wrap"><div class="bar green" id="b-first"></div></div>
+
+    <div class="lrow">
+      <span class="lbl">STT</span><span class="val" id="v-stt">—</span>
+    </div>
+    <div class="lrow">
+      <span class="lbl">LLM oracle</span><span class="val" id="v-llm">—</span>
+    </div>
+    <div class="lrow">
+      <span class="lbl">TTS synthesis</span><span class="val" id="v-tts">—</span>
+    </div>
+    <div class="lrow" style="border-top:1px solid #1a1a1a;padding-top:7px;margin-top:4px">
+      <span class="lbl" style="color:#aaa">Oracle total</span>
+      <span class="val" id="v-total" style="color:#fff">—</span>
+    </div>
+  </div>
+</div>
+
+<div class="cmp">
+  <h3>Cascaded vs KAME — latency comparison</h3>
+  <div class="crow">
+    <span class="clbl">Cascaded total</span>
+    <div class="ctrack"><div class="cfill red" id="f-cas"></div></div>
+    <span class="cval" id="c-cas" style="color:#cc8888">—</span>
+  </div>
+  <div class="crow">
+    <span class="clbl">KAME first audio</span>
+    <div class="ctrack"><div class="cfill green" id="f-kame"></div></div>
+    <span class="cval" id="c-kame" style="color:#88cc88">—</span>
+  </div>
+  <div class="crow">
+    <span class="clbl">KAME oracle done</span>
+    <div class="ctrack"><div class="cfill green" id="f-oracle" style="opacity:.5"></div></div>
+    <span class="cval" id="c-oracle" style="color:#88cc88;opacity:.7">—</span>
+  </div>
+  <p class="note">Shorter bar = faster. KAME first audio should be much shorter than cascaded total.</p>
+</div>
+
+<script>
+// ── state ──────────────────────────────────────────────
+let ws=null, mode='kame', recording=false
+let mediaRecorder=null, audioCtx=null
+let playHead=0, audioQueue=[]
+let casTotal=null, kameFirst=null, kameOracle=null
+
+// ── mode switch ────────────────────────────────────────
+function setMode(m){
+  mode=m
+  document.getElementById('t-cas').classList.toggle('active', m==='cascaded')
+  document.getElementById('t-kame').classList.toggle('active', m==='kame')
+  document.getElementById('mode-txt').textContent = m==='kame' ? 'KAME mode' : 'Cascaded mode'
+  document.getElementById('mode-badge').textContent = m.toUpperCase()
+  document.getElementById('mode-badge').className = 'badge ' + (m==='kame'?'green':'red')
+  if(ws){ws.close();ws=null}
+}
+
+// ── WebSocket ──────────────────────────────────────────
+function connect(){
+  const url = `ws://${location.host}/ws/${mode}`
+  ws = new WebSocket(url)
+
+  ws.onopen = ()=> setStatus('Connected — speak now')
+
+  ws.onmessage = async (ev)=>{
+    if(ev.data instanceof Blob){
+      const buf = await ev.data.arrayBuffer()
+      queueAudio(buf)
+    } else {
+      const msg = JSON.parse(ev.data)
+      onMsg(msg)
+    }
+  }
+
+  ws.onclose = ()=> setStatus('Disconnected')
+  ws.onerror = ()=> setStatus('Connection error — is the server running?')
+}
+
+function onMsg(msg){
+  if(msg.type==='transcript')
+    document.getElementById('transcript').textContent = msg.text
+
+  if(msg.type==='status')
+    setStatus(msg.text)
+
+  if(msg.type==='first_audio'){
+    kameFirst = msg.latency
+    set('v-first', msg.latency+'s')
+    setBar('b-first', msg.latency, 3)
+    updateComparison()
+  }
+
+  if(msg.type==='latency_stats'){
+    set('v-stt', (msg.stt||'—')+'s')
+    set('v-llm', (msg.llm||'—')+'s')
+    set('v-tts', (msg.tts||'—')+'s')
+    if(msg.mode==='cascaded'){
+      casTotal = msg.total
+      set('v-total', msg.total+'s')
+      document.getElementById('response').textContent = msg.response_text||''
+    }
+    if(msg.mode==='kame'){
+      kameOracle = msg.oracle_total
+      set('v-total', msg.oracle_total+'s')
+      document.getElementById('response').textContent = msg.response_text||''
+    }
+    updateComparison()
+  }
+}
+
+function updateComparison(){
+  const vals = [casTotal, kameFirst, kameOracle].filter(Boolean)
+  if(!vals.length) return
+  const max = Math.max(...vals)
+  if(casTotal)   setBarPct('f-cas',    casTotal/max*100)
+  if(kameFirst)  setBarPct('f-kame',   kameFirst/max*100)
+  if(kameOracle) setBarPct('f-oracle', kameOracle/max*100)
+  set('c-cas',    casTotal   ? casTotal+'s'   : '—')
+  set('c-kame',   kameFirst  ? kameFirst+'s'  : '—')
+  set('c-oracle', kameOracle ? kameOracle+'s' : '—')
+}
+
+// ── recording ──────────────────────────────────────────
+async function toggle(){
+  if(recording) stopRec()
+  else await startRec()
+}
+
+async function startRec(){
+  if(!ws || ws.readyState!==WebSocket.OPEN){ connect(); await sleep(600) }
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio:{ sampleRate:16000, channelCount:1, echoCancellation:true,
+              noiseSuppression:true }
+    })
+    mediaRecorder = new MediaRecorder(stream, {mimeType:'audio/webm'})
+    mediaRecorder.ondataavailable = e=>{
+      if(e.data.size>0 && ws?.readyState===WebSocket.OPEN)
+        e.data.arrayBuffer().then(b=> ws.send(b))
+    }
+    mediaRecorder.start(200)   // 200ms chunks
+    recording=true
+    document.getElementById('mic').classList.add('rec')
+    document.getElementById('mic').textContent='⏹'
+    setStatus('Recording...')
+  } catch(e){
+    setStatus('Mic access denied — allow mic in browser')
+  }
+}
+
+function stopRec(){
+  mediaRecorder?.stop()
+  mediaRecorder?.stream.getTracks().forEach(t=>t.stop())
+  recording=false
+  document.getElementById('mic').classList.remove('rec')
+  document.getElementById('mic').textContent='🎤'
+  setStatus('Processing...')
+  if(ws?.readyState===WebSocket.OPEN)
+    ws.send(JSON.stringify({type:'end_of_speech'}))
+}
+
+// ── audio playback ─────────────────────────────────────
+async function queueAudio(buf){
+  if(!audioCtx) audioCtx = new AudioContext({sampleRate:24000})
+  try{
+    const decoded = await audioCtx.decodeAudioData(buf.slice(0))
+    const src = audioCtx.createBufferSource()
+    src.buffer = decoded
+    src.connect(audioCtx.destination)
+    // Schedule to play after any currently queued audio
+    const when = Math.max(audioCtx.currentTime, playHead)
+    src.start(when)
+    playHead = when + decoded.duration
+  } catch(e){ console.warn('Audio decode:',e) }
+}
+
+// ── helpers ────────────────────────────────────────────
+const set=(id,v)=> document.getElementById(id).textContent=v
+function setStatus(t){ document.getElementById('status-txt').textContent=t }
+function setBar(id, val, maxVal){
+  document.getElementById(id).style.width = Math.min(100, val/maxVal*100)+'%'
+}
+function setBarPct(id, pct){
+  document.getElementById(id).style.width = pct+'%'
+}
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)) }
+</script>
+</body>
+</html>
