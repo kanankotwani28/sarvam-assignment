@@ -315,7 +315,157 @@ async def synthesize(text: str, language: str = "en-IN") -> tuple[bytes, float]:
 
 
 # ─────────────────────────────────────────────
-#  ORACLE PIPELINE  —  STT → LLM → TTS
+#  STREAMING TTS  —  WebSocket wss://api.sarvam.ai/text-to-speech/ws
+# ─────────────────────────────────────────────
+
+STREAMING_TTS_WS = "wss://api.sarvam.ai/text-to-speech/ws?model=bulbul:v3&send_completion_event=true"
+
+
+async def streaming_synthesize(
+    text: str,
+    language: str = "en-IN",
+) -> tuple[list[bytes], float, float]:
+    """
+    Stream TTS via Sarvam WebSocket API.
+    Returns (chunks, total_latency, first_chunk_latency).
+    Each chunk is raw 16-bit 24kHz mono PCM (LINEAR16).
+    Falls back to REST TTS on any error.
+    """
+    import json as json_module
+    import websockets
+
+    t_start = time.perf_counter()
+    chunks: list[bytes] = []
+    first_chunk_lat = 0.0
+
+    try:
+        async with websockets.connect(
+            STREAMING_TTS_WS,
+            extra_headers=_sarvam_headers_key(),
+            ping_interval=30,
+            max_size=10_000_000,
+        ) as ws:
+            # 1. Config — sets voice params; model is in the connection URL
+            await ws.send(json_module.dumps({
+                "type": "config",
+                "data": {
+                    "target_language_code": language,
+                    "speaker": TTS_SPEAKER,
+                    "output_audio_codec": "pcm",  # LINEAR16 raw PCM
+                },
+            }))
+
+            # 2. Text to synthesize
+            await ws.send(json_module.dumps({
+                "type": "text",
+                "data": {"text": text[:2500]},
+            }))
+
+            # 3. Flush — force immediate synthesis
+            await ws.send(json_module.dumps({"type": "flush"}))
+
+            # 4. Receive audio chunks + completion event
+            completed = False
+            while not completed:
+                msg = await ws.recv()
+                data = json_module.loads(msg)
+                msg_type = data.get("type")
+
+                if msg_type == "audio":
+                    pcm = base64.b64decode(data["data"]["audio"])
+                    chunks.append(pcm)
+                    if not first_chunk_lat:
+                        first_chunk_lat = time.perf_counter() - t_start
+
+                elif msg_type == "event":
+                    if data["data"].get("event_type") == "final":
+                        completed = True
+
+                elif msg_type == "error":
+                    print(f"[TTS-STREAM] Error: {data['data'].get('message', 'unknown')}")
+                    completed = True
+
+    except Exception as e:
+        print(f"[TTS-STREAM] Exception: {e}, falling back to REST")
+        audio, lat = await synthesize(text, language)
+        first_chunk_lat = lat
+        # Strip 44-byte WAV header — client expects raw PCM
+        if len(audio) > 44:
+            audio = audio[44:]
+        chunks = [audio]
+
+    total_lat = time.perf_counter() - t_start
+    print(f"[TTS-STREAM] {len(chunks)} chunks, first={first_chunk_lat:.2f}s, total={total_lat:.2f}s")
+    return chunks, total_lat, first_chunk_lat
+
+
+# ─────────────────────────────────────────────
+#  STREAMING ORACLE PIPELINE  —  STT → LLM → TTS (chunked)
+# ─────────────────────────────────────────────
+
+async def streaming_oracle_pipeline(
+    pcm_bytes: bytes,
+    history: list[dict],
+):
+    """
+    Async generator that yields intermediate results as the oracle progresses.
+    Yields dicts with 'stage' field: 'stt_done', 'llm_done', 'tts_chunk', 'tts_done'.
+    """
+    t_start = time.perf_counter()
+
+    # ── STT ──
+    try:
+        transcript, stt_lat = await asyncio.wait_for(transcribe(pcm_bytes), timeout=15.0)
+    except asyncio.TimeoutError:
+        transcript, stt_lat = "", 15.0
+
+    yield {
+        "stage": "stt_done",
+        "transcript": transcript,
+        "stt_latency": stt_lat,
+    }
+
+    if not transcript:
+        return
+
+    # ── LLM ──
+    try:
+        response_text, llm_lat = await asyncio.wait_for(
+            get_oracle(transcript, history), timeout=25.0
+        )
+    except asyncio.TimeoutError:
+        response_text, llm_lat = "", 25.0
+
+    yield {
+        "stage": "llm_done",
+        "response_text": response_text,
+        "llm_latency": llm_lat,
+    }
+
+    if not response_text:
+        return
+
+    # ── Streaming TTS ──
+    audio_chunks, tts_total, first_chunk_lat = await streaming_synthesize(response_text)
+
+    for i, chunk in enumerate(audio_chunks):
+        yield {
+            "stage": "tts_chunk",
+            "audio": chunk,
+            "chunk_index": i + 1,
+        }
+
+    yield {
+        "stage": "tts_done",
+        "tts_latency": tts_total,
+        "first_chunk_latency": first_chunk_lat,
+        "total_chunks": len(audio_chunks),
+        "total_bytes": sum(len(c) for c in audio_chunks),
+    }
+
+
+# ─────────────────────────────────────────────
+#  ORACLE PIPELINE (non-streaming)  —  STT → LLM → TTS
 # ─────────────────────────────────────────────
 
 async def oracle_pipeline(

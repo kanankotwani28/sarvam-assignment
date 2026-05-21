@@ -6,7 +6,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 
 from .config import HOST, PORT
-from .sarvam_client import oracle_pipeline
+from .sarvam_client import oracle_pipeline, streaming_oracle_pipeline
 from .kame_engine import tandem, classify_question
 from .metrics import SessionMetrics
 
@@ -120,8 +120,8 @@ async def ws_handler(websocket: WebSocket):
     async def _handle_tandem(pcm_data, history, ws, m):
         nonlocal prev_category, prev_language
         """
-        Mode B: send filler immediately, then background oracle.
-        User hears filler in ~200ms, real answer 2-4s later.
+        Mode B: send filler immediately, then streaming background oracle.
+        Filler plays locally; TTS PCM chunks stream in as Sarvam generates them.
         """
         # ── Fast path: send filler immediately ──
         filler = tandem.get_filler(language=prev_language, category=prev_category)
@@ -138,49 +138,78 @@ async def ws_handler(websocket: WebSocket):
             }))
             await ws.send_bytes(filler)
 
-        # ── Slow path: oracle in background ──
-        async def run_oracle():
-            await ws.send_text(json.dumps({
-                "type": "status", "text": "Oracle: transcribing..."
-            }))
-            result = await oracle_pipeline(pcm_data, history)
-            m.t_stt_done = m.t_speech_end + result["stt_latency"]
-            m.t_llm_done = m.t_stt_done + result["llm_latency"]
-            m.t_tts_done = m.t_llm_done + result["tts_latency"]
-            m.transcript = result["transcript"]
-            m.response_text = result["response_text"]
+        # ── Streaming oracle in background ──
+        async def run_streaming_oracle():
+            nonlocal prev_category, prev_language
+            stt_lat = llm_lat = tts_lat = 0.0
+            transcript = response_text = ""
 
-            if result["transcript"]:
-                await ws.send_text(json.dumps({
-                    "type": "transcript", "text": result["transcript"]
-                }))
-                prev_category = classify_question(result["transcript"])
+            async for event in streaming_oracle_pipeline(pcm_data, history):
+                stage = event["stage"]
 
-            if result["audio_bytes"]:
-                await ws.send_bytes(result["audio_bytes"])
+                if stage == "stt_done":
+                    stt_lat = event["stt_latency"]
+                    m.t_stt_done = m.t_speech_end + stt_lat
+                    transcript = event["transcript"]
+                    m.transcript = transcript
+
+                    if transcript:
+                        await ws.send_text(json.dumps({
+                            "type": "transcript",
+                            "text": transcript,
+                        }))
+                        prev_category = classify_question(transcript)
+                        prev_language = "hi-IN" if any(
+                            '\u0900' <= c <= '\u097F' for c in transcript
+                        ) else "en-IN"
+
+                elif stage == "llm_done":
+                    llm_lat = event["llm_latency"]
+                    m.t_llm_done = m.t_stt_done + llm_lat
+                    response_text = event["response_text"]
+                    m.response_text = response_text
+
+                    # Tell client to expect raw PCM stream at 24 kHz
+                    await ws.send_text(json.dumps({
+                        "type": "audio_meta",
+                        "sample_rate": 24000,
+                        "channels": 1,
+                        "bits": 16,
+                        "format": "pcm_s16le",
+                    }))
+
+                elif stage == "tts_chunk":
+                    m.t_first_audio_sent = m.t_first_audio_sent or time.perf_counter()
+                    await ws.send_bytes(event["audio"])
+
+                elif stage == "tts_done":
+                    tts_lat = event["tts_latency"]
+                    m.t_tts_done = m.t_llm_done + tts_lat
+                    await ws.send_text(json.dumps({"type": "audio_end"}))
 
             await ws.send_text(json.dumps({
                 "type": "latency_stats",
                 "mode": "tandem",
-                "stt":           round(result["stt_latency"], 3),
-                "llm":           round(result["llm_latency"], 3),
-                "tts":           round(result["tts_latency"], 3),
+                "stt":            round(stt_lat, 3),
+                "llm":            round(llm_lat, 3),
+                "tts":            round(tts_lat, 3),
+                "oracle_total":   round(stt_lat + llm_lat + tts_lat, 3),
                 "filler_latency": round(ttfa, 3),
-                "oracle_total":  round(result["total_latency"], 3),
-                "response_text": result["response_text"],
+                "response_text":  response_text,
             }))
 
             await ws.send_text(json.dumps({"type": "status", "text": "Ready"}))
 
             m.log()
-            history.extend([
-                {"role": "user",      "content": result["transcript"]},
-                {"role": "assistant", "content": result["response_text"]},
-            ])
-            if len(history) > 20:
-                history[:] = history[-20:]
+            if transcript and response_text:
+                history.extend([
+                    {"role": "user",      "content": transcript},
+                    {"role": "assistant", "content": response_text},
+                ])
+                if len(history) > 20:
+                    history[:] = history[-20:]
 
-        asyncio.create_task(run_oracle())
+        asyncio.create_task(run_streaming_oracle())
 
     try:
         while True:
