@@ -7,7 +7,7 @@ from fastapi.responses import HTMLResponse
 
 from .config import HOST, PORT
 from .sarvam_client import oracle_pipeline
-from .kame_engine import tandem
+from .kame_engine import tandem, classify_question
 from .metrics import SessionMetrics
 
 app = FastAPI(title="Sarvam-KAME Voice Agent")
@@ -27,9 +27,11 @@ async def stats():
 
 @app.on_event("startup")
 async def startup():
-    print(f"[SERVER] Ready at http://{HOST}:{PORT}")
-    # Preload filler phrases at startup (non-blocking)
+    # Block until minimal fillers are ready — ensures no silent filler
+    await tandem.preload_minimal()
+    # Full preload in background (categories + extra languages)
     asyncio.create_task(tandem.preload_fillers())
+    print(f"[SERVER] Ready at http://{HOST}:{PORT}")
 
 
 # ════════════════════════════════════════════
@@ -46,6 +48,8 @@ async def ws_handler(websocket: WebSocket):
     history: list[dict] = []
     audio_buffer = bytearray()
     m = SessionMetrics(mode=mode)
+    prev_category = None
+    prev_language = "en-IN"
 
     print(f"[WS] Client connected (default mode: {mode})")
 
@@ -69,6 +73,7 @@ async def ws_handler(websocket: WebSocket):
             await _handle_tandem(pcm_data, history, websocket, m)
 
     async def _handle_cascaded(pcm_data, history, ws, m):
+        nonlocal prev_category
         """Mode A: sequential STT → LLM → TTS, audio at the end."""
         await ws.send_text(json.dumps({"type": "status", "text": "Transcribing..."}))
         result = await oracle_pipeline(pcm_data, history)
@@ -82,6 +87,7 @@ async def ws_handler(websocket: WebSocket):
             await ws.send_text(json.dumps({
                 "type": "transcript", "text": result["transcript"]
             }))
+            prev_category = classify_question(result["transcript"])
 
         if not result["response_text"]:
             await ws.send_text(json.dumps({"type": "status", "text": "Ready"}))
@@ -112,12 +118,13 @@ async def ws_handler(websocket: WebSocket):
             history[:] = history[-20:]
 
     async def _handle_tandem(pcm_data, history, ws, m):
+        nonlocal prev_category, prev_language
         """
         Mode B: send filler immediately, then background oracle.
         User hears filler in ~200ms, real answer 2-4s later.
         """
         # ── Fast path: send filler immediately ──
-        filler = tandem.get_filler()
+        filler = tandem.get_filler(language=prev_language, category=prev_category)
         filler_time = time.perf_counter()
         m.t_first_audio_sent = filler_time
         m.t_speech_start = m.t_speech_end
@@ -147,6 +154,7 @@ async def ws_handler(websocket: WebSocket):
                 await ws.send_text(json.dumps({
                     "type": "transcript", "text": result["transcript"]
                 }))
+                prev_category = classify_question(result["transcript"])
 
             if result["audio_bytes"]:
                 await ws.send_bytes(result["audio_bytes"])

@@ -337,7 +337,13 @@ async def oracle_pipeline(
     }
     t_start = time.perf_counter()
 
-    transcript, stt_lat = await transcribe(pcm_bytes)
+    try:
+        transcript, stt_lat = await asyncio.wait_for(
+            transcribe(pcm_bytes), timeout=15.0
+        )
+    except asyncio.TimeoutError:
+        print("[ORACLE] STT timeout after 15s!")
+        transcript, stt_lat = "", 15.0
     result["transcript"] = transcript
     result["stt_latency"] = stt_lat
 
@@ -345,7 +351,13 @@ async def oracle_pipeline(
         result["total_latency"] = time.perf_counter() - t_start
         return result
 
-    response_text, llm_lat = await get_oracle(transcript, history)
+    try:
+        response_text, llm_lat = await asyncio.wait_for(
+            get_oracle(transcript, history), timeout=25.0
+        )
+    except asyncio.TimeoutError:
+        print("[ORACLE] LLM timeout after 25s!")
+        response_text, llm_lat = "", 25.0
     result["response_text"] = response_text
     result["llm_latency"] = llm_lat
 
@@ -353,7 +365,13 @@ async def oracle_pipeline(
         result["total_latency"] = time.perf_counter() - t_start
         return result
 
-    audio_bytes, tts_lat = await synthesize(response_text)
+    try:
+        audio_bytes, tts_lat = await asyncio.wait_for(
+            synthesize(response_text), timeout=20.0
+        )
+    except asyncio.TimeoutError:
+        print(f"[ORACLE] TTS timeout after 20s! text='{response_text[:60]}'")
+        audio_bytes, tts_lat = b"", 20.0
     result["audio_bytes"] = audio_bytes
     result["tts_latency"] = tts_lat
     result["total_latency"] = time.perf_counter() - t_start

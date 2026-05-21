@@ -76,7 +76,7 @@ h1{font-size:18px;font-weight:600;color:#fff;margin-bottom:2px}
 <p class="sub">Tandem architecture — instant filler + Sarvam oracle</p>
 
 <div class="tabs">
-  <button class="tab" id="t-tandem" onclick="setMode('tandem')">
+  <button class="tab active" id="t-tandem" onclick="setMode('tandem')">
     Mode B — Tandem (filler + oracle)
   </button>
   <button class="tab" id="t-cascaded" onclick="setMode('cascaded')">
@@ -258,7 +258,6 @@ function addHistory(msg){
     mode: msg.mode,
     stt: msg.stt, llm: msg.llm, tts: msg.tts,
   }
-  // Update latest entry's transcript from the transcript box
   const t = document.getElementById('transcript').textContent
   if(t && t !== 'Your speech appears here...'){
     if(historyEntries.length>0 && !historyEntries[historyEntries.length-1].transcript)
@@ -282,7 +281,7 @@ function renderHistory(){
   `).join('')
 }
 
-// ── recording ──────────────────────────────────────────
+// ── recording (manual mic click) ──────────────────────
 async function toggle(){
   if(recording) stopRec()
   else await startRec()
@@ -319,8 +318,6 @@ async function startRec(){
       if(ws?.readyState===WebSocket.OPEN) ws.send(e.data)
     }
     sourceNode.connect(processorNode)
-    processorNode.connect(audioCtx.destination)
-
     recording=true
     document.getElementById('mic').classList.add('rec')
     document.getElementById('mic').textContent='⏹'
