@@ -1,3 +1,4 @@
+import asyncio
 import httpx
 import base64
 import struct
@@ -311,3 +312,50 @@ async def synthesize(text: str, language: str = "en-IN") -> tuple[bytes, float]:
     except Exception as e:
         print(f"[TTS] Exception: {e}")
         return b"", time.perf_counter() - t
+
+
+# ─────────────────────────────────────────────
+#  ORACLE PIPELINE  —  STT → LLM → TTS
+# ─────────────────────────────────────────────
+
+async def oracle_pipeline(
+    pcm_bytes: bytes,
+    history: list[dict],
+) -> dict:
+    """
+    Run the full oracle: STT → LLM → TTS.
+    Returns dict with transcript, response_text, audio_bytes, and individual latencies.
+    """
+    result = {
+        "transcript": "",
+        "response_text": "",
+        "audio_bytes": b"",
+        "stt_latency": 0.0,
+        "llm_latency": 0.0,
+        "tts_latency": 0.0,
+        "total_latency": 0.0,
+    }
+    t_start = time.perf_counter()
+
+    transcript, stt_lat = await transcribe(pcm_bytes)
+    result["transcript"] = transcript
+    result["stt_latency"] = stt_lat
+
+    if not transcript:
+        result["total_latency"] = time.perf_counter() - t_start
+        return result
+
+    response_text, llm_lat = await get_oracle(transcript, history)
+    result["response_text"] = response_text
+    result["llm_latency"] = llm_lat
+
+    if not response_text:
+        result["total_latency"] = time.perf_counter() - t_start
+        return result
+
+    audio_bytes, tts_lat = await synthesize(response_text)
+    result["audio_bytes"] = audio_bytes
+    result["tts_latency"] = tts_lat
+    result["total_latency"] = time.perf_counter() - t_start
+
+    return result

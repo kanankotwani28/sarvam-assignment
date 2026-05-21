@@ -6,42 +6,173 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 
 from .config import HOST, PORT
-from .sarvam_client import transcribe, get_oracle, synthesize
-from .kame_engine import kame
+from .sarvam_client import oracle_pipeline
+from .kame_engine import tandem
 from .metrics import SessionMetrics
 
 app = FastAPI(title="Sarvam-KAME Voice Agent")
 
-# ── Serve browser UI ─────────────────────────
+
 @app.get("/")
 async def index():
     return HTMLResponse(Path("client/index.html").read_text(encoding="utf-8"))
 
-# ── Load KAME model on startup (non-blocking) ────────────────
+
+@app.get("/stats")
+async def stats():
+    return {
+        "tandem": tandem.get_filler_stats(),
+    }
+
+
 @app.on_event("startup")
 async def startup():
     print(f"[SERVER] Ready at http://{HOST}:{PORT}")
-    # Load KAME in background thread (will download ~4GB on first run)
-    def load_kame():
-        import time
-        print("[SERVER] Loading KAME in background (first run downloads ~4GB)...")
-        kame.load()
-        print(f"[SERVER] KAME loaded: {kame.loaded}")
-    import threading
-    thread = threading.Thread(target=load_kame, daemon=True)
-    thread.start()
+    # Preload filler phrases at startup (non-blocking)
+    asyncio.create_task(tandem.preload_fillers())
 
 
 # ════════════════════════════════════════════
-#  MODE A — CASCADED BASELINE
-#  user finishes → STT → LLM → TTS → audio
+#  SINGLE WEBSOCKET ENDPOINT
+#  Client sends mode in text messages:
+#    {"type": "set_mode", "mode": "cascaded"|"tandem"}
+#    {"type": "end_of_speech"}
+#  Binary messages = raw 16kHz 16-bit PCM audio chunks
 # ════════════════════════════════════════════
-@app.websocket("/ws/cascaded")
-async def ws_cascaded(websocket: WebSocket):
+@app.websocket("/ws")
+async def ws_handler(websocket: WebSocket):
     await websocket.accept()
+    mode = "tandem"  # default
     history: list[dict] = []
     audio_buffer = bytearray()
-    print("[CASCADED] Client connected")
+    m = SessionMetrics(mode=mode)
+
+    print(f"[WS] Client connected (default mode: {mode})")
+
+    async def handle_end_of_speech():
+        nonlocal m
+        m = SessionMetrics(mode=mode)
+        m.t_speech_end = time.perf_counter()
+
+        pcm_data = bytes(audio_buffer)
+        audio_buffer.clear()
+
+        if len(pcm_data) < 3200:
+            await websocket.send_text(json.dumps(
+                {"type": "status", "text": "Audio too short. Try speaking longer."}
+            ))
+            return
+
+        if mode == "cascaded":
+            await _handle_cascaded(pcm_data, history, websocket, m)
+        else:
+            await _handle_tandem(pcm_data, history, websocket, m)
+
+    async def _handle_cascaded(pcm_data, history, ws, m):
+        """Mode A: sequential STT → LLM → TTS, audio at the end."""
+        await ws.send_text(json.dumps({"type": "status", "text": "Transcribing..."}))
+        result = await oracle_pipeline(pcm_data, history)
+        m.t_stt_done = m.t_speech_end + result["stt_latency"]
+        m.t_llm_done = m.t_stt_done + result["llm_latency"]
+        m.t_tts_done = m.t_llm_done + result["tts_latency"]
+        m.transcript = result["transcript"]
+        m.response_text = result["response_text"]
+
+        if result["transcript"]:
+            await ws.send_text(json.dumps({
+                "type": "transcript", "text": result["transcript"]
+            }))
+
+        if not result["response_text"]:
+            await ws.send_text(json.dumps({"type": "status", "text": "Ready"}))
+            return
+
+        if result["audio_bytes"]:
+            m.t_first_audio_sent = time.perf_counter()
+            await ws.send_bytes(result["audio_bytes"])
+
+        await ws.send_text(json.dumps({
+            "type": "latency_stats",
+            "mode": "cascaded",
+            "stt":   round(result["stt_latency"], 3),
+            "llm":   round(result["llm_latency"], 3),
+            "tts":   round(result["tts_latency"], 3),
+            "total": round(m.total_latency or result["total_latency"], 3),
+            "response_text": result["response_text"],
+        }))
+
+        await ws.send_text(json.dumps({"type": "status", "text": "Ready"}))
+
+        m.log()
+        history.extend([
+            {"role": "user",      "content": result["transcript"]},
+            {"role": "assistant", "content": result["response_text"]},
+        ])
+        if len(history) > 20:
+            history[:] = history[-20:]
+
+    async def _handle_tandem(pcm_data, history, ws, m):
+        """
+        Mode B: send filler immediately, then background oracle.
+        User hears filler in ~200ms, real answer 2-4s later.
+        """
+        # ── Fast path: send filler immediately ──
+        filler = tandem.get_filler()
+        filler_time = time.perf_counter()
+        m.t_first_audio_sent = filler_time
+        m.t_speech_start = m.t_speech_end
+
+        if filler:
+            ttfa = m.time_to_first_audio or 0.0
+            print(f"[TANDEM] Filler sent: {len(filler)} bytes, TTFA={ttfa:.3f}s")
+            await ws.send_text(json.dumps({
+                "type": "filler_sent",
+                "latency": round(ttfa, 3),
+            }))
+            await ws.send_bytes(filler)
+
+        # ── Slow path: oracle in background ──
+        async def run_oracle():
+            await ws.send_text(json.dumps({
+                "type": "status", "text": "Oracle: transcribing..."
+            }))
+            result = await oracle_pipeline(pcm_data, history)
+            m.t_stt_done = m.t_speech_end + result["stt_latency"]
+            m.t_llm_done = m.t_stt_done + result["llm_latency"]
+            m.t_tts_done = m.t_llm_done + result["tts_latency"]
+            m.transcript = result["transcript"]
+            m.response_text = result["response_text"]
+
+            if result["transcript"]:
+                await ws.send_text(json.dumps({
+                    "type": "transcript", "text": result["transcript"]
+                }))
+
+            if result["audio_bytes"]:
+                await ws.send_bytes(result["audio_bytes"])
+
+            await ws.send_text(json.dumps({
+                "type": "latency_stats",
+                "mode": "tandem",
+                "stt":           round(result["stt_latency"], 3),
+                "llm":           round(result["llm_latency"], 3),
+                "tts":           round(result["tts_latency"], 3),
+                "filler_latency": round(ttfa, 3),
+                "oracle_total":  round(result["total_latency"], 3),
+                "response_text": result["response_text"],
+            }))
+
+            await ws.send_text(json.dumps({"type": "status", "text": "Ready"}))
+
+            m.log()
+            history.extend([
+                {"role": "user",      "content": result["transcript"]},
+                {"role": "assistant", "content": result["response_text"]},
+            ])
+            if len(history) > 20:
+                history[:] = history[-20:]
+
+        asyncio.create_task(run_oracle())
 
     try:
         while True:
@@ -53,231 +184,18 @@ async def ws_cascaded(websocket: WebSocket):
             elif "text" in data:
                 msg = json.loads(data["text"])
 
-                if msg.get("type") == "end_of_speech":
-                    m = SessionMetrics(mode="cascaded")
-                    m.t_speech_end = time.perf_counter()
-
-                    if len(audio_buffer) < 3200:
-                        audio_buffer.clear()
-                        continue
-
-                    # ── Step 1: STT ──
-                    await websocket.send_text(json.dumps(
-                        {"type": "status", "text": "Transcribing..."}
-                    ))
-                    transcript, stt_lat = await transcribe(bytes(audio_buffer))
-                    m.t_stt_done = time.perf_counter()
-                    m.transcript = transcript
-                    audio_buffer.clear()
-
-                    if not transcript:
-                        await websocket.send_text(json.dumps(
-                            {"type": "status", "text": "Could not transcribe. Try again."}
-                        ))
-                        continue
-
+                if msg.get("type") == "set_mode":
+                    mode = msg["mode"]
+                    print(f"[WS] Mode → {mode}")
                     await websocket.send_text(json.dumps({
-                        "type": "transcript", "text": transcript
+                        "type": "mode_set", "mode": mode
                     }))
 
-                    # ── Step 2: LLM ──
-                    await websocket.send_text(json.dumps(
-                        {"type": "status", "text": "Thinking..."}
-                    ))
-                    response, llm_lat = await get_oracle(transcript, history)
-                    m.t_llm_done = time.perf_counter()
-                    m.response_text = response
-
-                    if not response:
-                        continue
-
-                    # ── Step 3: TTS ──
-                    await websocket.send_text(json.dumps(
-                        {"type": "status", "text": "Generating speech..."}
-                    ))
-                    audio_bytes, tts_lat = await synthesize(response)
-                    m.t_tts_done = time.perf_counter()
-
-                    # ── Send audio ──
-                    if audio_bytes:
-                        m.t_first_audio_sent = time.perf_counter()
-                        await websocket.send_bytes(audio_bytes)
-
-                    # ── Send stats to UI ──
-                    await websocket.send_text(json.dumps({
-                        "type": "latency_stats",
-                        "mode": "cascaded",
-                        "stt":   round(stt_lat,  3),
-                        "llm":   round(llm_lat,  3),
-                        "tts":   round(tts_lat,  3),
-                        "total": round(m.total_latency or 0, 3),
-                        "response_text": response,
-                    }))
-
-                    await websocket.send_text(json.dumps(
-                        {"type": "status", "text": "Ready"}
-                    ))
-
-                    # Log and update history
-                    m.log()
-                    history.extend([
-                        {"role": "user",      "content": transcript},
-                        {"role": "assistant", "content": response},
-                    ])
-                    if len(history) > 20:
-                        history = history[-20:]
+                elif msg.get("type") == "end_of_speech":
+                    await handle_end_of_speech()
 
     except WebSocketDisconnect:
-        print("[CASCADED] Client disconnected")
+        print("[WS] Client disconnected")
     except Exception as e:
-        print(f"[CASCADED] Error: {e}")
+        print(f"[WS] Error: {e}")
         import traceback; traceback.print_exc()
-
-
-# ════════════════════════════════════════════
-#  MODE B — KAME TANDEM
-#  Moshi responds immediately while
-#  Sarvam STT+LLM runs in parallel as oracle
-# ════════════════════════════════════════════
-@app.websocket("/ws/kame")
-async def ws_kame(websocket: WebSocket):
-    await websocket.accept()
-    history: list[dict]     = []
-    audio_buffer            = bytearray()
-    oracle_queue: asyncio.Queue = asyncio.Queue(maxsize=1)
-    m = SessionMetrics(mode="kame")
-
-    print("[KAME] Client connected")
-    kame.start_session()
-
-    async def oracle_pipeline(pcm_data: bytes, turn_start: float):
-        """
-        Runs in background: STT → LLM → TTS → send oracle audio.
-        Does NOT block Moshi's inference loop.
-        """
-        nonlocal m
-        m = SessionMetrics(mode="kame")
-        m.t_speech_end = turn_start
-
-        # STT
-        await websocket.send_text(json.dumps(
-            {"type": "status", "text": "Oracle: transcribing..."}
-        ))
-        transcript, stt_lat = await transcribe(pcm_data)
-        m.t_stt_done = time.perf_counter()
-        m.transcript = transcript
-
-        if not transcript:
-            return
-
-        await websocket.send_text(json.dumps({
-            "type": "transcript", "text": transcript
-        }))
-
-        # LLM oracle
-        await websocket.send_text(json.dumps(
-            {"type": "status", "text": "Oracle: generating response..."}
-        ))
-        response, llm_lat = await get_oracle(transcript, history)
-        m.t_llm_done = time.perf_counter()
-        m.response_text = response
-
-        if not response:
-            return
-
-        # Drop oracle into queue — Moshi picks it up (last-write-wins)
-        if not oracle_queue.empty():
-            try:
-                oracle_queue.get_nowait()   # discard stale oracle
-            except asyncio.QueueEmpty:
-                pass
-        await oracle_queue.put(response)
-
-        # TTS — high-quality oracle audio sent as "correction"
-        oracle_audio, tts_lat = await synthesize(response)
-        m.t_tts_done = time.perf_counter()
-
-        if oracle_audio:
-            await websocket.send_bytes(oracle_audio)
-
-        # Stats
-        await websocket.send_text(json.dumps({
-            "type": "latency_stats",
-            "mode": "kame",
-            "stt":            round(stt_lat,  3),
-            "llm":            round(llm_lat,  3),
-            "tts":            round(tts_lat,  3),
-            "oracle_total":   round((m.t_tts_done - m.t_speech_end), 3),
-            "time_to_first":  round(m.time_to_first_audio or 0, 3),
-            "response_text":  response,
-        }))
-
-        m.log()
-        history.extend([
-            {"role": "user",      "content": transcript},
-            {"role": "assistant", "content": response},
-        ])
-        if len(history) > 20:
-            history = history[-20:]
-
-    try:
-        while True:
-            data = await websocket.receive()
-
-            if "bytes" in data:
-                chunk = data["bytes"]
-                audio_buffer.extend(chunk)
-
-                # ── Moshi immediate response (fast path) ──
-                if kame.loaded:
-                    if m.t_speech_start is None:
-                        m.t_speech_start = time.perf_counter()
-
-                    # Get latest oracle if available (non-blocking)
-                    oracle_text = None
-                    try:
-                        oracle_text = oracle_queue.get_nowait()
-                        print(f"[KAME] Oracle injected: '{oracle_text[:40]}...'")
-                    except asyncio.QueueEmpty:
-                        pass
-
-                    # Run one Moshi step
-                    immediate_audio = await asyncio.get_event_loop().run_in_executor(
-                        None, kame.step, chunk, oracle_text
-                    )
-
-                    if immediate_audio:
-                        if m.t_first_audio_sent is None:
-                            m.t_first_audio_sent = time.perf_counter()
-                            ttfa = m.time_to_first_audio
-                            print(f"[KAME] First audio: {ttfa:.3f}s after speech start")
-                            await websocket.send_text(json.dumps({
-                                "type": "first_audio",
-                                "latency": round(ttfa, 3)
-                            }))
-                        await websocket.send_bytes(immediate_audio)
-
-            elif "text" in data:
-                msg = json.loads(data["text"])
-
-                if msg.get("type") == "end_of_speech":
-                    turn_start = time.perf_counter()
-                    m.t_speech_start = None  # reset for next turn
-                    m.t_first_audio_sent = None
-
-                    pcm_snapshot = bytes(audio_buffer)
-                    audio_buffer.clear()
-
-                    if len(pcm_snapshot) > 3200:
-                        # Launch oracle in background — non-blocking
-                        asyncio.create_task(
-                            oracle_pipeline(pcm_snapshot, turn_start)
-                        )
-
-    except WebSocketDisconnect:
-        print("[KAME] Client disconnected")
-        kame.end_session()
-    except Exception as e:
-        print(f"[KAME] Error: {e}")
-        import traceback; traceback.print_exc()
-        kame.end_session()

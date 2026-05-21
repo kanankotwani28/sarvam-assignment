@@ -12,14 +12,12 @@ body{font-family:system-ui,sans-serif;background:#0a0a0f;color:#e2e2e2;
 h1{font-size:18px;font-weight:600;color:#fff;margin-bottom:2px}
 .sub{font-size:12px;color:#555;margin-bottom:20px}
 
-/* mode tabs */
 .tabs{display:flex;gap:8px;margin-bottom:20px}
 .tab{padding:7px 18px;border-radius:6px;border:1px solid #2a2a2a;
      background:transparent;color:#666;cursor:pointer;font-size:13px;
      transition:all .2s}
 .tab.active{background:#1a1a30;border-color:#4a44c0;color:#fff}
 
-/* mic button */
 .mic-row{display:flex;align-items:center;gap:14px;margin-bottom:20px}
 #mic{width:52px;height:52px;border-radius:50%;border:2px solid #333;
      background:#111;cursor:pointer;font-size:20px;transition:all .2s}
@@ -30,7 +28,6 @@ h1{font-size:18px;font-weight:600;color:#fff;margin-bottom:2px}
 #status-txt{font-size:13px;color:#777}
 #mode-txt{font-size:11px;color:#444;margin-top:2px}
 
-/* panels */
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
 .panel{background:#111;border:1px solid #1e1e1e;border-radius:8px;padding:14px}
 .panel h3{font-size:10px;color:#555;text-transform:uppercase;
@@ -40,43 +37,50 @@ h1{font-size:18px;font-weight:600;color:#fff;margin-bottom:2px}
      line-height:1.6;word-break:break-word}
 .box.green{background:#0a150a;border-color:#1a3a1a;color:#88cc88}
 
-/* latency rows */
 .lrow{display:flex;justify-content:space-between;margin-bottom:7px;font-size:12px}
 .lrow .lbl{color:#666}.lrow .val{font-weight:500}
 .bar-wrap{height:3px;background:#1a1a1a;border-radius:2px;margin-bottom:10px}
 .bar{height:3px;border-radius:2px;transition:width .5s ease;width:0%}
-.bar.red{background:#c0392b}.bar.green{background:#27ae60}
+.bar.green{background:#27ae60}.bar.red{background:#c0392b}.bar.blue{background:#4a80c0}
 
-/* comparison */
 .cmp{background:#111;border:1px solid #1e1e1e;border-radius:8px;padding:14px}
 .cmp h3{font-size:10px;color:#555;text-transform:uppercase;
         letter-spacing:.08em;margin-bottom:12px}
 .crow{display:flex;align-items:center;gap:10px;margin-bottom:8px}
-.crow .clbl{font-size:11px;color:#888;width:90px;flex-shrink:0}
+.crow .clbl{font-size:11px;color:#888;width:100px;flex-shrink:0}
 .ctrack{flex:1;height:7px;background:#1a1a1a;border-radius:4px;overflow:hidden}
 .cfill{height:100%;border-radius:4px;transition:width .8s ease;width:0%}
-.cfill.red{background:#c0392b}.cfill.green{background:#27ae60}
+.cfill.green{background:#27ae60}.cfill.red{background:#c0392b}.cfill.blue{background:#4a80c0}
 .cval{font-size:11px;width:55px;text-align:right}
 .note{font-size:10px;color:#444;margin-top:6px}
 
-/* kame badge */
-.badge{display:inline-block;padding:2px 7px;border-radius:3px;
-       font-size:10px;font-weight:600}
-.badge.green{background:#0d2a0d;color:#88cc88}
-.badge.red{background:#2a0d0d;color:#cc8888}
+.arch-box{background:#0d0d15;border:1px solid #2a2a3a;border-radius:8px;
+          padding:12px;margin-bottom:12px;font-size:11px;color:#999;line-height:1.6}
+.arch-box strong{color:#bbb}
+.arch-box .hl{color:#4a80c0}
+
+.history{background:#111;border:1px solid #1e1e1e;border-radius:8px;padding:14px;margin-top:12px}
+.history h3{font-size:10px;color:#555;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px}
+.entry{font-size:12px;padding:8px 0;border-bottom:1px solid #1a1a1a}
+.entry:last-child{border-bottom:none}
+.entry .role{font-weight:600;display:inline-block;width:50px}
+.entry .role.user{color:#4a80c0}
+.entry .role.assist{color:#88cc88}
+.entry .text{color:#bbb}
+.entry .lat{font-size:10px;color:#555;margin-top:2px}
 </style>
 </head>
 <body>
 
 <h1>Sarvam-KAME Voice Agent</h1>
-<p class="sub">KAME tandem architecture — immediate Moshi response + Sarvam oracle back-end</p>
+<p class="sub">Tandem architecture — instant filler + Sarvam oracle</p>
 
 <div class="tabs">
-  <button class="tab" id="t-cas" onclick="setMode('cascaded')">
-    Mode A — Cascaded (baseline)
+  <button class="tab" id="t-tandem" onclick="setMode('tandem')">
+    Mode B — Tandem (filler + oracle)
   </button>
-  <button class="tab active" id="t-kame" onclick="setMode('kame')">
-    Mode B — KAME tandem
+  <button class="tab" id="t-cascaded" onclick="setMode('cascaded')">
+    Mode A — Cascaded (baseline)
   </button>
 </div>
 
@@ -84,15 +88,22 @@ h1{font-size:18px;font-weight:600;color:#fff;margin-bottom:2px}
   <button id="mic" onclick="toggle()">🎤</button>
   <div>
     <div id="status-txt">Click mic to start</div>
-    <div id="mode-txt">KAME mode</div>
+    <div id="mode-txt">Tandem mode</div>
   </div>
+</div>
+
+<div class="arch-box" id="arch-info">
+  <strong>Tandem (Mode B):</strong> You hear a <span class="hl">filler phrase</span>
+  immediately after speaking. The full STT→LLM→TTS pipeline runs in the
+  <strong>background</strong> and delivers the real answer moments later.
+  The filler is pre-synthesized at server startup — zero latency at runtime.
 </div>
 
 <div class="grid">
   <div class="panel">
     <h3>Transcript</h3>
     <div class="box" id="transcript">Your speech appears here...</div>
-    <h3 style="margin-top:12px">Response <span class="badge green" id="mode-badge">KAME</span></h3>
+    <h3 style="margin-top:12px">Response</h3>
     <div class="box green" id="response">AI response appears here...</div>
   </div>
 
@@ -100,10 +111,10 @@ h1{font-size:18px;font-weight:600;color:#fff;margin-bottom:2px}
     <h3>Latency breakdown</h3>
 
     <div class="lrow">
-      <span class="lbl">First audio (KAME)</span>
-      <span class="val" id="v-first">—</span>
+      <span class="lbl">Filler (fast path)</span>
+      <span class="val" id="v-filler">—</span>
     </div>
-    <div class="bar-wrap"><div class="bar green" id="b-first"></div></div>
+    <div class="bar-wrap"><div class="bar green" id="b-filler"></div></div>
 
     <div class="lrow">
       <span class="lbl">STT</span><span class="val" id="v-stt">—</span>
@@ -116,70 +127,76 @@ h1{font-size:18px;font-weight:600;color:#fff;margin-bottom:2px}
     </div>
     <div class="lrow" style="border-top:1px solid #1a1a1a;padding-top:7px;margin-top:4px">
       <span class="lbl" style="color:#aaa">Oracle total</span>
-      <span class="val" id="v-total" style="color:#fff">—</span>
+      <span class="val" id="v-oracle-total" style="color:#fff">—</span>
     </div>
   </div>
 </div>
 
 <div class="cmp">
-  <h3>Cascaded vs KAME — latency comparison</h3>
+  <h3>Latency comparison: Cascaded vs Tandem</h3>
   <div class="crow">
     <span class="clbl">Cascaded total</span>
     <div class="ctrack"><div class="cfill red" id="f-cas"></div></div>
     <span class="cval" id="c-cas" style="color:#cc8888">—</span>
   </div>
   <div class="crow">
-    <span class="clbl">KAME first audio</span>
-    <div class="ctrack"><div class="cfill green" id="f-kame"></div></div>
-    <span class="cval" id="c-kame" style="color:#88cc88">—</span>
+    <span class="clbl">Tandem filler</span>
+    <div class="ctrack"><div class="cfill green" id="f-filler"></div></div>
+    <span class="cval" id="c-filler" style="color:#88cc88">—</span>
   </div>
   <div class="crow">
-    <span class="clbl">KAME oracle done</span>
-    <div class="ctrack"><div class="cfill green" id="f-oracle" style="opacity:.5"></div></div>
+    <span class="clbl">Tandem oracle</span>
+    <div class="ctrack"><div class="cfill blue" id="f-oracle" style="opacity:.5"></div></div>
     <span class="cval" id="c-oracle" style="color:#88cc88;opacity:.7">—</span>
   </div>
-  <p class="note">Shorter bar = faster. KAME first audio should be much shorter than cascaded total.</p>
+  <p class="note">Shorter bar = faster. Tandem filler arrives in ~200ms — vastly faster than cascaded.</p>
+</div>
+
+<div class="history">
+  <h3>Conversation history</h3>
+  <div id="history">No turns yet.</div>
 </div>
 
 <script>
 // ── state ──────────────────────────────────────────────
-let ws=null, mode='kame', recording=false
-let mediaRecorder=null, audioCtx=null
-let playHead=0, audioQueue=[]
-let casTotal=null, kameFirst=null, kameOracle=null
+let ws=null, mode='tandem', recording=false
+let audioCtx=null, processorNode=null, sourceNode=null, stream=null
+let casTotal=null, fillerLat=null, oracleTotal=null
 
 // ── mode switch ────────────────────────────────────────
 function setMode(m){
+  if(m===mode) return
   mode=m
-  document.getElementById('t-cas').classList.toggle('active', m==='cascaded')
-  document.getElementById('t-kame').classList.toggle('active', m==='kame')
-  document.getElementById('mode-txt').textContent = m==='kame' ? 'KAME mode' : 'Cascaded mode'
-  document.getElementById('mode-badge').textContent = m.toUpperCase()
-  document.getElementById('mode-badge').className = 'badge ' + (m==='kame'?'green':'red')
-  if(ws){ws.close();ws=null}
+  document.getElementById('t-tandem').classList.toggle('active', m==='tandem')
+  document.getElementById('t-cascaded').classList.toggle('active', m==='cascaded')
+  document.getElementById('mode-txt').textContent = m==='tandem' ? 'Tandem mode' : 'Cascaded mode'
+  document.getElementById('arch-info').innerHTML = m==='tandem'
+    ? '<strong>Tandem (Mode B):</strong> You hear a <span class="hl">filler phrase</span> '
+    + 'immediately after speaking. The full STT→LLM→TTS pipeline runs in the '
+    + '<strong>background</strong> and delivers the real answer moments later.'
+    : '<strong>Cascaded (Mode A):</strong> Audio is sent after you stop speaking. '
+    + 'STT → LLM → TTS run sequentially. You wait <strong>3-5 seconds</strong> '
+    + 'of silence before hearing the response.'
+  if(ws?.readyState===WebSocket.OPEN){
+    ws.send(JSON.stringify({type:'set_mode', mode:m}))
+  }
 }
 
 // ── WebSocket ──────────────────────────────────────────
 function connect(){
-  const url = `ws://${location.host}/ws/${mode}`
-  ws = new WebSocket(url)
-
+  ws = new WebSocket(`ws://${location.host}/ws`)
   ws.onopen = ()=> setStatus('Connected — speak now')
-
   ws.onmessage = async (ev)=>{
-    // Handle audio bytes (ArrayBuffer or Blob)
     if(ev.data instanceof ArrayBuffer || ev.data instanceof Blob){
-      const buf = await (ev.data instanceof Blob ? ev.data.arrayBuffer() : Promise.resolve(ev.data))
-      console.log('Received audio:', buf.byteLength, 'bytes')
-      queueAudio(buf)
+      const buf = await (ev.data instanceof Blob ? ev.data.arrayBuffer() : ev.data)
+      playAudio(buf)
     } else {
       const msg = JSON.parse(ev.data)
       onMsg(msg)
     }
   }
-
   ws.onclose = ()=> setStatus('Disconnected')
-  ws.onerror = ()=> setStatus('Connection error — is the server running?')
+  ws.onerror = ()=> setStatus('Connection error')
 }
 
 function onMsg(msg){
@@ -189,10 +206,10 @@ function onMsg(msg){
   if(msg.type==='status')
     setStatus(msg.text)
 
-  if(msg.type==='first_audio'){
-    kameFirst = msg.latency
-    set('v-first', msg.latency+'s')
-    setBar('b-first', msg.latency, 3)
+  if(msg.type==='filler_sent'){
+    fillerLat = msg.latency
+    set('v-filler', msg.latency+'s')
+    setBar('b-filler', msg.latency, 3)
     updateComparison()
   }
 
@@ -200,60 +217,95 @@ function onMsg(msg){
     set('v-stt', (msg.stt||'—')+'s')
     set('v-llm', (msg.llm||'—')+'s')
     set('v-tts', (msg.tts||'—')+'s')
+
     if(msg.mode==='cascaded'){
       casTotal = msg.total
-      set('v-total', msg.total+'s')
-      document.getElementById('response').textContent = msg.response_text||''
+      set('v-oracle-total', msg.total+'s')
+    } else {
+      oracleTotal = msg.oracle_total
+      set('v-oracle-total', msg.oracle_total+'s')
+      if(msg.filler_latency){
+        fillerLat = msg.filler_latency
+        set('v-filler', msg.filler_latency+'s')
+      }
     }
-    if(msg.mode==='kame'){
-      kameOracle = msg.oracle_total
-      set('v-total', msg.oracle_total+'s')
-      document.getElementById('response').textContent = msg.response_text||''
-    }
+    document.getElementById('response').textContent = msg.response_text||''
     updateComparison()
+    addHistory(msg)
   }
+
+  if(msg.type==='mode_set')
+    console.log('Mode confirmed:', msg.mode)
 }
 
 function updateComparison(){
-  const vals = [casTotal, kameFirst, kameOracle].filter(Boolean)
+  const vals = [casTotal, fillerLat, oracleTotal].filter(v=>v!==null)
   if(!vals.length) return
   const max = Math.max(...vals)
-  if(casTotal)   setBarPct('f-cas',    casTotal/max*100)
-  if(kameFirst)  setBarPct('f-kame',   kameFirst/max*100)
-  if(kameOracle) setBarPct('f-oracle', kameOracle/max*100)
-  set('c-cas',    casTotal   ? casTotal+'s'   : '—')
-  set('c-kame',   kameFirst  ? kameFirst+'s'  : '—')
-  set('c-oracle', kameOracle ? kameOracle+'s' : '—')
+  if(casTotal!==null)   setBarPct('f-cas',    casTotal/max*100)
+  if(fillerLat!==null)  setBarPct('f-filler', fillerLat/max*100)
+  if(oracleTotal!==null) setBarPct('f-oracle', oracleTotal/max*100)
+  set('c-cas',    casTotal!==null   ? casTotal+'s'   : '—')
+  set('c-filler', fillerLat!==null  ? fillerLat+'s'  : '—')
+  set('c-oracle', oracleTotal!==null ? oracleTotal+'s' : '—')
+}
+
+let historyEntries = []
+function addHistory(msg){
+  const entry = {
+    transcript: msg.response_text ? '…' : '',
+    response: msg.response_text||'',
+    mode: msg.mode,
+    stt: msg.stt, llm: msg.llm, tts: msg.tts,
+  }
+  // Update latest entry's transcript from the transcript box
+  const t = document.getElementById('transcript').textContent
+  if(t && t !== 'Your speech appears here...'){
+    if(historyEntries.length>0 && !historyEntries[historyEntries.length-1].transcript)
+      historyEntries[historyEntries.length-1].transcript = t
+    else
+      entry.transcript = t
+  }
+  historyEntries.push(entry)
+  renderHistory()
+}
+
+function renderHistory(){
+  const container = document.getElementById('history')
+  if(!historyEntries.length){ container.textContent='No turns yet.'; return }
+  container.innerHTML = historyEntries.map(e=>`
+    <div class="entry">
+      <div><span class="role user">You:</span> <span class="text">${e.transcript||'—'}</span></div>
+      <div><span class="role assist">AI:</span> <span class="text">${e.response||'—'}</span></div>
+      <div class="lat">[${e.mode}] STT ${e.stt||'?'}s · LLM ${e.llm||'?'}s · TTS ${e.tts||'?'}s</div>
+    </div>
+  `).join('')
 }
 
 // ── recording ──────────────────────────────────────────
-let audioContext=null, processorNode=null, sourceNode=null
-
 async function toggle(){
   if(recording) stopRec()
   else await startRec()
 }
 
 async function startRec(){
-  if(!ws || ws.readyState!==WebSocket.OPEN){ connect(); await sleep(600) }
+  if(!ws || ws.readyState!==WebSocket.OPEN){ connect(); await new Promise(r=>setTimeout(r,600)) }
   try{
-    const stream = await navigator.mediaDevices.getUserMedia({
+    stream = await navigator.mediaDevices.getUserMedia({
       audio:{ sampleRate:16000, channelCount:1, echoCancellation:true,
               noiseSuppression:true }
     })
-    audioContext = new AudioContext({sampleRate:16000})
-    sourceNode = audioContext.createMediaStreamSource(stream)
-    
-    // Using AudioWorklet instead of deprecated ScriptProcessor
-    await audioContext.audioWorklet.addModule('data:application/javascript,' + encodeURIComponent(`
+    audioCtx = new AudioContext({sampleRate:16000})
+    sourceNode = audioCtx.createMediaStreamSource(stream)
+
+    await audioCtx.audioWorklet.addModule('data:application/javascript,' + encodeURIComponent(`
       class RecorderProcessor extends AudioWorkletProcessor {
         process(inputs, outputs, parameters) {
           const input = inputs[0];
           if (input && input[0]) {
             const int16 = new Int16Array(input[0].length);
-            for (let i = 0; i < input[0].length; i++) {
+            for (let i = 0; i < input[0].length; i++)
               int16[i] = Math.max(-32768, Math.min(32767, Math.round(input[0][i] * 32768)));
-            }
             this.port.postMessage(int16.buffer, [int16.buffer]);
           }
           return true;
@@ -261,14 +313,14 @@ async function startRec(){
       }
       registerProcessor("recorder-processor", RecorderProcessor);
     `))
-    
-    processorNode = new AudioWorkletNode(audioContext, "recorder-processor")
+
+    processorNode = new AudioWorkletNode(audioCtx, "recorder-processor")
     processorNode.port.onmessage = (e) => {
       if(ws?.readyState===WebSocket.OPEN) ws.send(e.data)
     }
     sourceNode.connect(processorNode)
-    processorNode.connect(audioContext.destination)
-    
+    processorNode.connect(audioCtx.destination)
+
     recording=true
     document.getElementById('mic').classList.add('rec')
     document.getElementById('mic').textContent='⏹'
@@ -279,15 +331,9 @@ async function startRec(){
 }
 
 function stopRec(){
-  if(mediaRecorder){
-    mediaRecorder?.stop()
-    mediaRecorder?.stream.getTracks().forEach(t=>t.stop())
-  }
-  if(processorNode){
-    processorNode?.disconnect()
-    sourceNode?.disconnect()
-    audioContext?.close()
-  }
+  if(processorNode){ processorNode.disconnect(); sourceNode.disconnect() }
+  if(audioCtx) audioCtx.close()
+  if(stream) stream.getTracks().forEach(t=>t.stop())
   recording=false
   document.getElementById('mic').classList.remove('rec')
   document.getElementById('mic').textContent='🎤'
@@ -298,25 +344,18 @@ function stopRec(){
 
 // ── audio playback ─────────────────────────────────────
 let playCtx=null
-async function queueAudio(buf){
-  if(!playCtx) {
+async function playAudio(buf){
+  if(!playCtx){
     playCtx = new AudioContext({sampleRate:24000})
-    console.log('Created AudioContext, state:', playCtx.state)
   }
-  if(playCtx.state === 'suspended') {
-    await playCtx.resume()
-    console.log('Resumed AudioContext')
-  }
+  if(playCtx.state==='suspended') await playCtx.resume()
   try{
     const decoded = await playCtx.decodeAudioData(buf.slice(0))
-    console.log('Decoded audio, duration:', decoded.duration, 's')
     const src = playCtx.createBufferSource()
     src.buffer = decoded
     src.connect(playCtx.destination)
-    src.onended = () => console.log('Audio playback ended')
     src.start()
-    console.log('Audio started playing')
-  } catch(e){ console.error('Audio decode:',e) }
+  } catch(e){ console.error('Audio decode error:', e) }
 }
 
 // ── helpers ────────────────────────────────────────────
@@ -328,7 +367,6 @@ function setBar(id, val, maxVal){
 function setBarPct(id, pct){
   document.getElementById(id).style.width = pct+'%'
 }
-function sleep(ms){ return new Promise(r=>setTimeout(r,ms)) }
 </script>
 </body>
 </html>
