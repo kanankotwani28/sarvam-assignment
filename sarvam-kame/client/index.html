@@ -548,11 +548,17 @@ async function startRec(){
     processorNode.port.onmessage=e=>{if(ws?.readyState===WebSocket.OPEN)ws.send(e.data)}
     sourceNode.connect(processorNode)
     // Ensure playback AudioContext is alive (within user gesture so resume works).
-    // Play a silent buffer to prevent Chrome from suspending it while idle between turns.
+    // Play a looping silent buffer to prevent Chrome from suspending it while idle.
     if(!playCtx)playCtx=new AudioContext({sampleRate:24000})
     if(playCtx.state==='suspended'){try{await playCtx.resume()}catch(e){}}
-    const sil=playCtx.createBuffer(1,playCtx.sampleRate,playCtx.sampleRate)
-    const ss=playCtx.createBufferSource();ss.buffer=sil;ss.connect(playCtx.destination);ss.start()
+    if(!playCtx._keepalive){
+      const sil=playCtx.createBuffer(1,playCtx.sampleRate,playCtx.sampleRate)
+      playCtx._keepalive=playCtx.createBufferSource()
+      playCtx._keepalive.buffer=sil
+      playCtx._keepalive.loop=true
+      playCtx._keepalive.connect(playCtx.destination)
+      playCtx._keepalive.start()
+    }
     recording=true
     document.getElementById('orb-wrap').classList.add('recording')
     document.getElementById('orb-label').textContent='Recording... click to stop'

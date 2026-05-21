@@ -173,14 +173,15 @@ async def ws_handler(websocket: WebSocket):
                     response_text = event["response_text"]
                     m.response_text = response_text
 
-                    # Tell client to expect raw PCM stream at 24 kHz
-                    await ws.send_text(json.dumps({
-                        "type": "audio_meta",
-                        "sample_rate": 24000,
-                        "channels": 1,
-                        "bits": 16,
-                        "format": "pcm_s16le",
-                    }))
+                    # Tell client to expect raw PCM stream — only if there's actually a response
+                    if response_text:
+                        await ws.send_text(json.dumps({
+                            "type": "audio_meta",
+                            "sample_rate": 24000,
+                            "channels": 1,
+                            "bits": 16,
+                            "format": "pcm_s16le",
+                        }))
 
                 elif stage == "tts_chunk":
                     m.t_first_audio_sent = m.t_first_audio_sent or time.perf_counter()
