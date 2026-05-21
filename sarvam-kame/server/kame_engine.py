@@ -7,6 +7,8 @@ Supports question-type classification for context-aware fillers.
 import asyncio
 import time
 import re
+import struct
+import io
 
 
 # ── Filler phrases by category ──────────────────────────
@@ -161,10 +163,35 @@ class TandemEngine:
 
         print("[TANDEM] Full preload complete!")
 
+    @staticmethod
+    def _concat_wavs(wavs: list[bytes]) -> bytes:
+        """Concatenate multiple WAV files into one continuous WAV."""
+        if not wavs:
+            return b""
+        if len(wavs) == 1:
+            return wavs[0]
+        # Parse first WAV header (44 bytes, 16-bit mono)
+        header = wavs[0][:44]
+        data_size = struct.unpack_from('<I', header, 40)[0]
+        chunks = [wavs[0]]  # first WAV with header
+        for w in wavs[1:]:
+            # Strip 44-byte WAV header from subsequent WAVs, keep raw PCM
+            if len(w) > 44:
+                chunks.append(w[44:])
+                data_size += len(w) - 44
+        # Update data size in first header
+        new_header = bytearray(header)
+        struct.pack_into('<I', new_header, 4, 36 + data_size)  # RIFF size
+        struct.pack_into('<I', new_header, 40, data_size)       # data chunk size
+        chunks[0] = bytes(new_header)
+        return b"".join(chunks)
+
     def get_filler(self, language: str = DEFAULT_LANG,
-                   category: str = DEFAULT_CATEGORY) -> bytes:
+                   category: str = DEFAULT_CATEGORY,
+                   count: int = 4) -> bytes:
         """
-        Return the next filler audio in round-robin order.
+        Return a concatenated sequence of `count` filler phrases.
+        Single WAV — plays continuously to cover oracle latency.
         Takes <1ms — just reads from memory.
         """
         lang = language if language in self.fillers else DEFAULT_LANG
@@ -173,9 +200,12 @@ class TandemEngine:
                     self.fillers.get(DEFAULT_LANG, {}).get(DEFAULT_CATEGORY, [])))
         if not pool:
             return b""
-        idx = self._turn_count % len(pool)
-        self._turn_count += 1
-        return pool[idx]
+        wavs = []
+        for i in range(count):
+            idx = (self._turn_count + i) % len(pool)
+            wavs.append(pool[idx])
+        self._turn_count += count
+        return self._concat_wavs(wavs)
 
     def get_filler_stats(self) -> dict:
         """Return filler preload stats for the /stats endpoint."""
