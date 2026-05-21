@@ -48,7 +48,7 @@ async def ws_handler(websocket: WebSocket):
     history: list[dict] = []
     audio_buffer = bytearray()
     m = SessionMetrics(mode=mode)
-    prev_category = None
+    prev_category = "general"
     prev_language = "en-IN"
 
     print(f"[WS] Client connected (default mode: {mode})")
@@ -124,7 +124,11 @@ async def ws_handler(websocket: WebSocket):
         Filler plays locally; TTS PCM chunks stream in as Sarvam generates them.
         """
         # ── Fast path: send filler immediately ──
-        filler = tandem.get_filler(language=prev_language, category=prev_category)
+        # First turn — language unknown, use bilingual filler (EN + HI).
+        # Subsequent turns use the STT-detected language from previous turn.
+        filler = (tandem.get_bilingual_filler(category=prev_category)
+                  if not history
+                  else tandem.get_filler(language=prev_language, category=prev_category))
         filler_time = time.perf_counter()
         m.t_first_audio_sent = filler_time
         m.t_speech_start = m.t_speech_end
@@ -143,6 +147,7 @@ async def ws_handler(websocket: WebSocket):
             nonlocal prev_category, prev_language
             stt_lat = llm_lat = tts_lat = 0.0
             transcript = response_text = ""
+            oracle_start = time.perf_counter()
 
             async for event in streaming_oracle_pipeline(pcm_data, history):
                 stage = event["stage"]
@@ -159,9 +164,8 @@ async def ws_handler(websocket: WebSocket):
                             "text": transcript,
                         }))
                         prev_category = classify_question(transcript)
-                        prev_language = "hi-IN" if any(
-                            '\u0900' <= c <= '\u097F' for c in transcript
-                        ) else "en-IN"
+                        lang = event.get("language_code", "")
+                        prev_language = "hi-IN" if lang == "hi-IN" else "en-IN"
 
                 elif stage == "llm_done":
                     llm_lat = event["llm_latency"]
@@ -193,7 +197,7 @@ async def ws_handler(websocket: WebSocket):
                 "stt":            round(stt_lat, 3),
                 "llm":            round(llm_lat, 3),
                 "tts":            round(tts_lat, 3),
-                "oracle_total":   round(stt_lat + llm_lat + tts_lat, 3),
+                "oracle_total":   round(time.perf_counter() - oracle_start, 3),
                 "filler_latency": round(ttfa, 3),
                 "response_text":  response_text,
             }))

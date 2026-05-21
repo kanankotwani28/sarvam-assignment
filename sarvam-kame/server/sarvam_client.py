@@ -48,14 +48,15 @@ def _sarvam_headers_bearer() -> dict:
 #  STT  —  POST https://api.sarvam.ai/speech-to-text
 # ─────────────────────────────────────────────
 
-async def transcribe(pcm_bytes: bytes, language: str = "unknown") -> tuple[str, float]:
+async def transcribe(pcm_bytes: bytes, language: str = "unknown") -> tuple[str, float, str]:
     """
     Transcribe raw 16kHz mono PCM audio.
-    Returns (transcript, latency_seconds).
+    Returns (transcript, latency_seconds, detected_language_code).
+    detected_language_code is '' if not available.
     language: 'unknown' = auto-detect, 'hi-IN', 'en-IN', etc.
     """
     if len(pcm_bytes) < 3200:   # less than 0.1s — skip
-        return "", 0.0
+        return "", 0.0, ""
 
     wav_bytes = pcm_to_wav(pcm_bytes)
     t = time.perf_counter()
@@ -75,17 +76,18 @@ async def transcribe(pcm_bytes: bytes, language: str = "unknown") -> tuple[str, 
         latency = time.perf_counter() - t
 
         if resp.status_code == 200:
-            transcript = resp.json().get("transcript", "").strip()
-            lang_detected = resp.json().get("language_code", "")
+            data = resp.json()
+            transcript = data.get("transcript", "").strip()
+            lang_detected = data.get("language_code", "")
             print(f"[STT] '{transcript}' | lang={lang_detected} | {latency:.2f}s")
-            return transcript, latency
+            return transcript, latency, lang_detected
         else:
             print(f"[STT] Error {resp.status_code}: {resp.text[:200]}")
-            return "", latency
+            return "", latency, ""
 
     except Exception as e:
         print(f"[STT] Exception: {e}")
-        return "", time.perf_counter() - t
+        return "", time.perf_counter() - t, ""
 
 
 # ─────────────────────────────────────────────
@@ -121,6 +123,41 @@ def _clean_llm_response(text: str) -> str:
         text = 'I am ready to help.'
 
     return text
+
+
+def _ensure_complete_sentence(text: str) -> str:
+    """
+    If the text doesn't end with sentence-ending punctuation,
+    truncate at the last complete sentence boundary.
+    Falls back to appending a period if no boundary is found
+    (only for text longer than 30 chars — short answers like '42' are fine).
+    """
+    text = text.strip()
+    if not text or len(text) <= 30:
+        return text
+
+    sentence_enders = '.!?\u0964'  # period, exclamation, question, Hindi danda
+    if text[-1] in sentence_enders:
+        return text
+
+    # Find the last sentence boundary
+    last_boundary = 0
+    for i, ch in enumerate(text):
+        if ch in sentence_enders:
+            # Include optional closing quote/paren/brace after punctuation
+            j = i + 1
+            while j < len(text) and text[j] in '\'")\u201d\u2019\u201c\u201a':
+                j += 1
+            last_boundary = j
+
+    if last_boundary > 0:
+        truncated = text[:last_boundary].strip()
+        if truncated:
+            return truncated
+
+    # No boundary found — text is likely a fragment. Append period.
+    print(f"[LLM] No sentence boundary found in '{text[:60]}' — appending period")
+    return text.rstrip(',;:') + '.'
 
 # async def get_oracle(
 #     transcript: str,
@@ -179,7 +216,7 @@ def _clean_llm_response(text: str) -> str:
 async def get_oracle(
     transcript: str,
     history: list[dict],
-    max_tokens: int = 200
+    max_tokens: int = 300
 ) -> tuple[str, float]:
     """
     Generate oracle response from Sarvam LLM.
@@ -187,13 +224,12 @@ async def get_oracle(
     Strips all thinking/reasoning blocks before returning.
     """
     system_prompt = (
-        "You are Sarvam, an Indian voice assistant. "
-        "Answer every question directly and completely. "
-        "For math, calculate and give the exact number immediately. "
-        "For things you don't know, say exactly: I don't have that information. "
-        "Never say 'let me help' without finishing the sentence. "
-        "Keep answers under 3 spoken sentences. "
-        "Never use bullet points or markdown — only plain speech."
+        "You are Sarvam, a helpful Indian voice assistant. "
+        "Give direct, complete answers with the actual information the user needs. "
+        "For math, immediately give the exact number with a brief explanation. "
+        "If you don't know something, say: I don't have that information. "
+        "Answers should be 1-3 complete spoken sentences — never fragments. "
+        "Always finish your last sentence. Never use bullet points or markdown."
     )
 
     messages = (
@@ -228,7 +264,7 @@ async def get_oracle(
             raw_text = data["choices"][0]["message"]["content"]
             print(f"[LLM] raw:   '{raw_text[:120]}'")
 
-            clean_text = _clean_llm_response(raw_text)
+            clean_text = _ensure_complete_sentence(_clean_llm_response(raw_text))
 
             if not clean_text or clean_text == "I am ready to help.":
                 print("[LLM] Response was entirely thinking block — retrying with simpler prompt")
@@ -247,7 +283,7 @@ async def get_oracle(
                     )
                 if resp2.status_code == 200:
                     raw2 = resp2.json()["choices"][0]["message"]["content"]
-                    clean_text = _clean_llm_response(raw2)
+                    clean_text = _ensure_complete_sentence(_clean_llm_response(raw2))
 
             print(f"[LLM] clean: '{clean_text[:80]}' | {latency:.2f}s")
             return clean_text, latency
@@ -415,14 +451,15 @@ async def streaming_oracle_pipeline(
 
     # ── STT ──
     try:
-        transcript, stt_lat = await asyncio.wait_for(transcribe(pcm_bytes), timeout=15.0)
+        transcript, stt_lat, lang_code = await asyncio.wait_for(transcribe(pcm_bytes), timeout=15.0)
     except asyncio.TimeoutError:
-        transcript, stt_lat = "", 15.0
+        transcript, stt_lat, lang_code = "", 15.0, ""
 
     yield {
         "stage": "stt_done",
         "transcript": transcript,
         "stt_latency": stt_lat,
+        "language_code": lang_code,
     }
 
     if not transcript:
@@ -488,12 +525,12 @@ async def oracle_pipeline(
     t_start = time.perf_counter()
 
     try:
-        transcript, stt_lat = await asyncio.wait_for(
+        transcript, stt_lat, _lang = await asyncio.wait_for(
             transcribe(pcm_bytes), timeout=15.0
         )
     except asyncio.TimeoutError:
         print("[ORACLE] STT timeout after 15s!")
-        transcript, stt_lat = "", 15.0
+        transcript, stt_lat, _lang = "", 15.0, ""
     result["transcript"] = transcript
     result["stt_latency"] = stt_lat
 

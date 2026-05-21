@@ -197,6 +197,20 @@ class TandemEngine:
         self._turn_count += count
         return self._concat_wavs(wavs)
 
+    def get_bilingual_filler(self, category: str = DEFAULT_CATEGORY) -> bytes:
+        """
+        Return a WAV with one EN + one HI filler phrase concatenated.
+        Used for the first turn when the user's language is unknown.
+        """
+        wavs = []
+        for lang in ("en-IN", "hi-IN"):
+            pool = self.fillers.get(lang, {}).get(category,
+                    self.fillers.get(lang, {}).get(DEFAULT_CATEGORY, []))
+            if pool:
+                wavs.append(pool[self._turn_count % len(pool)])
+        self._turn_count += 1
+        return self._concat_wavs(wavs) if wavs else b""
+
     def get_filler_stats(self) -> dict:
         """Return filler preload stats for the /stats endpoint."""
         lang_details = {}

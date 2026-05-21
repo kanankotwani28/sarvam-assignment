@@ -4,407 +4,603 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sarvam-KAME Voice Agent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
+:root {
+  --bg:        #08090d;
+  --bg1:       #0d0f17;
+  --bg2:       #12151f;
+  --bg3:       #181c28;
+  --border:    rgba(255,255,255,.06);
+  --border2:   rgba(255,255,255,.10);
+  --text:      #e8eaf0;
+  --muted:     #5a607a;
+  --muted2:    #8890a8;
+  --accent:    #5b6ef5;
+  --accent2:   #7c8ff7;
+  --green:     #34d399;
+  --red:       #f87171;
+  --amber:     #fbbf24;
+  --font-head: 'Syne', sans-serif;
+  --font-mono: 'DM Mono', monospace;
+  --r:         10px;
+  --r-lg:      16px;
+}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:system-ui,sans-serif;background:#0a0a0f;color:#e2e2e2;
-     min-height:100vh;padding:20px;max-width:860px;margin:0 auto}
+body{
+  font-family:var(--font-head);
+  background:var(--bg);
+  color:var(--text);
+  min-height:100vh;
+  overflow-x:hidden;
+}
+body::before{
+  content:'';position:fixed;inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events:none;z-index:0;opacity:.4;
+}
+.app{position:relative;z-index:1;max-width:900px;margin:0 auto;padding:28px 20px 60px}
 
-h1{font-size:18px;font-weight:600;color:#fff;margin-bottom:2px}
-.sub{font-size:12px;color:#555;margin-bottom:20px}
+/* header */
+.header{display:flex;align-items:center;justify-content:space-between;margin-bottom:32px;padding-bottom:20px;border-bottom:1px solid var(--border)}
+.header-left{display:flex;align-items:center;gap:12px}
+.logo-mark{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#5b6ef5,#818cf8);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
+.header-title{font-size:15px;font-weight:600;letter-spacing:-.2px}
+.header-sub{font-size:11px;color:var(--muted);margin-top:1px;font-family:var(--font-mono)}
+.status-pill{display:flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:11px;color:var(--muted2);font-family:var(--font-mono)}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--muted);flex-shrink:0}
+.dot.on{background:var(--green);box-shadow:0 0 6px var(--green)}
 
-.tabs{display:flex;gap:8px;margin-bottom:20px}
-.tab{padding:7px 18px;border-radius:6px;border:1px solid #2a2a2a;
-     background:transparent;color:#666;cursor:pointer;font-size:13px;
-     transition:all .2s}
-.tab.active{background:#1a1a30;border-color:#4a44c0;color:#fff}
+/* tabs */
+.mode-bar{display:flex;gap:4px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:4px;margin-bottom:24px}
+.mtab{flex:1;padding:8px 0;border-radius:7px;border:none;background:transparent;color:var(--muted);cursor:pointer;font-size:12px;font-family:var(--font-head);font-weight:500;transition:all .2s;letter-spacing:.01em}
+.mtab.active{background:var(--bg3);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.4)}
+.badge{display:inline-block;font-size:9px;padding:1px 5px;border-radius:4px;margin-left:5px;vertical-align:middle;font-family:var(--font-mono)}
+.mtab.active .badge{background:rgba(91,110,245,.2);color:var(--accent2)}
+.mtab:not(.active) .badge{background:rgba(255,255,255,.05);color:var(--muted)}
 
-.mic-row{display:flex;align-items:center;gap:14px;margin-bottom:20px}
-#mic{width:52px;height:52px;border-radius:50%;border:2px solid #333;
-     background:#111;cursor:pointer;font-size:20px;transition:all .2s}
-#mic.rec{border-color:#c0392b;background:#1a0000;
-         animation:pulse 1.4s ease-in-out infinite}
-@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(192,57,43,.5)}
-                 50%{box-shadow:0 0 0 10px rgba(192,57,43,0)}}
-#status-txt{font-size:13px;color:#777}
-#mode-txt{font-size:11px;color:#444;margin-top:2px}
+/* grid */
+.main-grid{display:grid;grid-template-columns:1fr 340px;gap:16px;margin-bottom:16px}
+@media(max-width:680px){.main-grid{grid-template-columns:1fr}}
 
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
-.panel{background:#111;border:1px solid #1e1e1e;border-radius:8px;padding:14px}
-.panel h3{font-size:10px;color:#555;text-transform:uppercase;
-          letter-spacing:.08em;margin-bottom:10px}
-.box{background:#0a0a0a;border:1px solid #1a1a1a;border-radius:5px;
-     padding:10px;font-size:13px;color:#bbb;min-height:56px;
-     line-height:1.6;word-break:break-word}
-.box.green{background:#0a150a;border-color:#1a3a1a;color:#88cc88}
+/* agent card */
+.agent-card{background:var(--bg1);border:1px solid var(--border);border-radius:var(--r-lg);display:flex;flex-direction:column;align-items:center;padding:36px 24px 28px;position:relative;overflow:hidden}
+.agent-card::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 60% 40% at 50% 0%, rgba(91,110,245,.08) 0%, transparent 70%);pointer-events:none}
 
-.lrow{display:flex;justify-content:space-between;margin-bottom:7px;font-size:12px}
-.lrow .lbl{color:#666}.lrow .val{font-weight:500}
-.bar-wrap{height:3px;background:#1a1a1a;border-radius:2px;margin-bottom:10px}
-.bar{height:3px;border-radius:2px;transition:width .5s ease;width:0%}
-.bar.green{background:#27ae60}.bar.red{background:#c0392b}.bar.blue{background:#4a80c0}
+/* orb */
+.orb-wrap{position:relative;width:120px;height:120px;margin-bottom:20px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.orb-ring{position:absolute;inset:-8px;border-radius:50%;border:1px solid rgba(91,110,245,.15);animation:spin-ring 8s linear infinite}
+.orb-ring2{position:absolute;inset:-16px;border-radius:50%;border:1px solid rgba(91,110,245,.07);animation:spin-ring 12s linear infinite reverse}
+@keyframes spin-ring{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+.orb{width:120px;height:120px;border-radius:50%;background:radial-gradient(circle at 35% 35%, #6b7df7, #3b4ac4 55%, #1a1e3a);box-shadow:0 0 0 1px rgba(91,110,245,.3),0 0 30px rgba(91,110,245,.15),0 8px 32px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;transition:all .3s cubic-bezier(.34,1.56,.64,1);position:relative;z-index:1;user-select:none}
+.orb:hover{transform:scale(1.05);box-shadow:0 0 0 1px rgba(91,110,245,.5),0 0 50px rgba(91,110,245,.25),0 8px 40px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.15)}
+.orb-wrap.recording .orb{background:radial-gradient(circle at 35% 35%, #f87171, #c0392b 55%, #4a0f0f);box-shadow:0 0 0 1px rgba(248,113,113,.4),0 0 40px rgba(248,113,113,.25),0 8px 32px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.1);animation:orb-pulse 1.2s ease-in-out infinite}
+@keyframes orb-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
+.orb-wrap.recording .orb-ring{border-color:rgba(248,113,113,.3);animation:spin-ring 3s linear infinite}
+.orb-wrap.recording .orb-ring2{border-color:rgba(248,113,113,.15);animation:spin-ring 5s linear infinite reverse}
+.wave-bars{display:flex;align-items:center;gap:3px;height:28px}
+.wave-bar{width:3px;border-radius:2px;background:rgba(255,255,255,.7);height:6px;transition:height .1s}
+.orb-wrap.recording .wave-bar:nth-child(1){animation:wave1 .6s ease-in-out infinite}
+.orb-wrap.recording .wave-bar:nth-child(2){animation:wave1 .6s ease-in-out infinite .1s}
+.orb-wrap.recording .wave-bar:nth-child(3){animation:wave1 .6s ease-in-out infinite .2s}
+.orb-wrap.recording .wave-bar:nth-child(4){animation:wave1 .6s ease-in-out infinite .1s}
+.orb-wrap.recording .wave-bar:nth-child(5){animation:wave1 .6s ease-in-out infinite .05s}
+@keyframes wave1{0%,100%{height:4px}50%{height:22px}}
+.orb-label{font-size:12px;color:var(--muted2);margin-bottom:4px;font-family:var(--font-mono);letter-spacing:.03em}
+.orb-hint{font-size:11px;color:var(--muted);font-family:var(--font-mono)}
+.arch-pill{margin-top:18px;width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px;font-size:11px;color:var(--muted2);line-height:1.6;font-family:var(--font-mono)}
+.arch-pill strong{color:var(--accent2)}
+.chain{display:flex;align-items:center;gap:4px;margin-top:6px;flex-wrap:wrap}
+.chain-step{background:rgba(91,110,245,.12);border:1px solid rgba(91,110,245,.2);border-radius:4px;padding:2px 7px;font-size:10px;color:var(--accent2)}
+.chain-arrow{color:var(--muted);font-size:10px}
 
-.cmp{background:#111;border:1px solid #1e1e1e;border-radius:8px;padding:14px}
-.cmp h3{font-size:10px;color:#555;text-transform:uppercase;
-        letter-spacing:.08em;margin-bottom:12px}
-.crow{display:flex;align-items:center;gap:10px;margin-bottom:8px}
-.crow .clbl{font-size:11px;color:#888;width:100px;flex-shrink:0}
-.ctrack{flex:1;height:7px;background:#1a1a1a;border-radius:4px;overflow:hidden}
-.cfill{height:100%;border-radius:4px;transition:width .8s ease;width:0%}
-.cfill.green{background:#27ae60}.cfill.red{background:#c0392b}.cfill.blue{background:#4a80c0}
-.cval{font-size:11px;width:55px;text-align:right}
-.note{font-size:10px;color:#444;margin-top:6px}
+/* right col */
+.right-col{display:flex;flex-direction:column;gap:12px}
+.panel{background:var(--bg1);border:1px solid var(--border);border-radius:var(--r-lg);padding:16px}
+.panel-label{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.panel-label::after{content:'';flex:1;height:1px;background:var(--border)}
+.text-box{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.65;color:var(--muted2);min-height:48px;font-family:var(--font-mono);word-break:break-word}
+.text-box.filled{color:var(--text)}
+.text-box.response{color:var(--green)}
 
-.arch-box{background:#0d0d15;border:1px solid #2a2a3a;border-radius:8px;
-          padding:12px;margin-bottom:12px;font-size:11px;color:#999;line-height:1.6}
-.arch-box strong{color:#bbb}
-.arch-box .hl{color:#4a80c0}
+/* latency */
+.lat-rows{display:flex;flex-direction:column;gap:6px}
+.lat-row{display:flex;align-items:center;gap:8px}
+.lat-name{font-size:10px;color:var(--muted);font-family:var(--font-mono);width:72px;flex-shrink:0}
+.lat-track{flex:1;height:5px;background:var(--bg3);border-radius:3px;overflow:hidden}
+.lat-fill{height:100%;border-radius:3px;width:0%;transition:width .6s cubic-bezier(.22,1,.36,1)}
+.lat-fill.green{background:var(--green)}.lat-fill.blue{background:var(--accent2)}.lat-fill.amber{background:var(--amber)}.lat-fill.red{background:var(--red)}
+.lat-val{font-size:10px;font-family:var(--font-mono);width:44px;text-align:right;color:var(--muted2)}
+.lat-divider{height:1px;background:var(--border);margin:4px 0}
+.lat-total{display:flex;justify-content:space-between;font-size:11px;font-family:var(--font-mono);color:var(--text);font-weight:500;padding-top:4px}
 
-.history{background:#111;border:1px solid #1e1e1e;border-radius:8px;padding:14px;margin-top:12px}
-.history h3{font-size:10px;color:#555;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px}
-.entry{font-size:12px;padding:8px 0;border-bottom:1px solid #1a1a1a}
-.entry:last-child{border-bottom:none}
-.entry .role{font-weight:600;display:inline-block;width:50px}
-.entry .role.user{color:#4a80c0}
-.entry .role.assist{color:#88cc88}
-.entry .text{color:#bbb}
-.entry .lat{font-size:10px;color:#555;margin-top:2px}
+/* comparison block cards */
+.cmp-blocks{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.cmp-block{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;position:relative;overflow:hidden}
+.cmp-block::before{content:'';position:absolute;inset:0;opacity:.04;pointer-events:none}
+.cmp-block.mode-a::before{background:var(--red)}
+.cmp-block.mode-b::before{background:var(--green)}
+.cmp-block-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.cmp-block-title{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;font-family:var(--font-mono)}
+.cmp-block.mode-a .cmp-block-title{color:var(--red)}
+.cmp-block.mode-b .cmp-block-title{color:var(--green)}
+.cmp-block-badge{font-size:8px;font-family:var(--font-mono);padding:2px 6px;border-radius:4px}
+.cmp-block.mode-a .cmp-block-badge{background:rgba(248,113,113,.1);color:var(--red);border:1px solid rgba(248,113,113,.2)}
+.cmp-block.mode-b .cmp-block-badge{background:rgba(52,211,153,.1);color:var(--green);border:1px solid rgba(52,211,153,.2)}
+.cmp-metric{margin-bottom:8px}
+.cmp-metric:last-child{margin-bottom:0}
+.cmp-metric-label{font-size:9px;color:var(--muted);font-family:var(--font-mono);margin-bottom:2px}
+.cmp-metric-val{font-size:18px;font-weight:600;font-family:var(--font-mono);line-height:1}
+.cmp-metric-sub{font-size:9px;font-family:var(--font-mono);margin-top:2px}
+.cmp-block.mode-a .cmp-metric-val{color:var(--red)}
+.cmp-block.mode-b .cmp-metric-val{color:var(--green)}
+.cmp-block.mode-b .first-audio-val{color:var(--green)}
+.cmp-divider{height:1px;background:var(--border);margin:8px 0}
+.cmp-note{font-size:10px;color:var(--muted);margin-top:10px;font-family:var(--font-mono);line-height:1.5;padding:8px 10px;background:var(--bg2);border-radius:6px;border:1px solid var(--border)}
+.winner-tag{display:inline-flex;align-items:center;gap:4px;font-size:9px;font-family:var(--font-mono);color:var(--green);background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.15);border-radius:4px;padding:2px 6px;margin-top:6px}
+
+/* stack vis */
+.stack-vis{background:var(--bg1);border:1px solid var(--border);border-radius:var(--r-lg);padding:16px;margin-top:4px}
+.stack-title{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:12px;display:flex;align-items:center;justify-content:space-between}
+.stack-title span{font-size:9px;color:var(--muted);font-family:var(--font-mono);text-transform:none;letter-spacing:0}
+.stacks{display:flex;flex-direction:column;gap:10px}
+.stack-row{display:flex;align-items:center;gap:10px}
+.stack-lbl{font-size:10px;color:var(--muted);font-family:var(--font-mono);width:64px;flex-shrink:0}
+.stack-bar{flex:1;height:20px;background:var(--bg3);border-radius:5px;overflow:hidden;display:flex}
+.s-seg{height:100%;display:flex;align-items:center;justify-content:center;font-size:9px;font-family:var(--font-mono);font-weight:500;transition:width .7s cubic-bezier(.22,1,.36,1);min-width:0;overflow:hidden;white-space:nowrap}
+.s-seg.stt{background:rgba(251,191,36,.25);color:var(--amber)}
+.s-seg.llm{background:rgba(129,140,248,.25);color:var(--accent2)}
+.s-seg.tts{background:rgba(52,211,153,.2);color:var(--green)}
+.s-seg.filler{background:rgba(52,211,153,.5);color:var(--green)}
+.stack-total{font-size:10px;font-family:var(--font-mono);color:var(--muted2);width:60px;text-align:right;flex-shrink:0}
+.stack-axis{display:flex;margin-left:74px;margin-right:70px;font-size:9px;color:var(--muted);font-family:var(--font-mono);border-top:1px solid var(--border);padding-top:4px;margin-top:4px}
+.stack-axis span{flex:1}
+.stack-axis span:last-child{text-align:right}
+.legend{display:flex;gap:10px;margin-top:8px;flex-wrap:wrap}
+.leg-item{font-size:9px;font-family:var(--font-mono);display:flex;align-items:center;gap:4px}
+.leg-dot{width:8px;height:8px;border-radius:2px;display:inline-block;flex-shrink:0}
+
+/* history */
+.history-panel{background:var(--bg1);border:1px solid var(--border);border-radius:var(--r-lg);padding:16px;margin-top:16px}
+.history-empty{font-size:12px;color:var(--muted);font-family:var(--font-mono);padding:8px 0}
+.h-entry{padding:10px 0;border-bottom:1px solid var(--border)}
+.h-entry:last-child{border-bottom:none}
+.h-row{display:flex;gap:8px;margin-bottom:3px;font-size:12px}
+.h-role{font-weight:600;font-size:10px;padding:2px 6px;border-radius:4px;flex-shrink:0;font-family:var(--font-mono);margin-top:1px;height:fit-content}
+.h-role.u{background:rgba(91,110,245,.15);color:var(--accent2)}
+.h-role.a{background:rgba(52,211,153,.12);color:var(--green)}
+.h-text{color:var(--muted2);line-height:1.55;font-family:var(--font-mono)}
+.h-meta{display:flex;align-items:center;gap:5px;margin-top:6px;flex-wrap:wrap}
+.h-chip{font-size:9px;font-family:var(--font-mono);background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:2px 6px;color:var(--muted)}
+.h-chip.mode-b{border-color:rgba(91,110,245,.2);color:var(--accent2)}
+.h-chip.mode-a{border-color:rgba(248,113,113,.2);color:#f87171}
+.h-chip.stt{border-color:rgba(251,191,36,.15);color:var(--amber)}
+.h-chip.llm{border-color:rgba(129,140,248,.2);color:var(--accent2)}
+.h-chip.tts{border-color:rgba(52,211,153,.15);color:var(--green)}
+.h-chip.filler{border-color:rgba(52,211,153,.3);color:var(--green)}
 </style>
 </head>
 <body>
+<div class="app">
 
-<h1>Sarvam-KAME Voice Agent</h1>
-<p class="sub">Tandem architecture — instant filler + Sarvam oracle</p>
-
-<div class="tabs">
-  <button class="tab active" id="t-tandem" onclick="setMode('tandem')">
-    Mode B — Tandem (filler + oracle)
-  </button>
-  <button class="tab" id="t-cascaded" onclick="setMode('cascaded')">
-    Mode A — Cascaded (baseline)
-  </button>
-</div>
-
-<div class="mic-row">
-  <button id="mic" onclick="toggle()">🎤</button>
-  <div>
-    <div id="status-txt">Click mic to start</div>
-    <div id="mode-txt">Tandem mode</div>
-  </div>
-</div>
-
-<div class="arch-box" id="arch-info">
-  <strong>Tandem (Mode B):</strong> You hear a <span class="hl">filler phrase</span>
-  immediately after speaking. The full STT→LLM→TTS pipeline runs in the
-  <strong>background</strong> and delivers the real answer moments later.
-  The filler is pre-synthesized at server startup — zero latency at runtime.
-</div>
-
-<div class="grid">
-  <div class="panel">
-    <h3>Transcript</h3>
-    <div class="box" id="transcript">Your speech appears here...</div>
-    <h3 style="margin-top:12px">Response</h3>
-    <div class="box green" id="response">AI response appears here...</div>
-  </div>
-
-  <div class="panel">
-    <h3>Latency breakdown</h3>
-
-    <div class="lrow">
-      <span class="lbl">Filler (fast path)</span>
-      <span class="val" id="v-filler">—</span>
+  <div class="header">
+    <div class="header-left">
+      <div class="logo-mark">🎙</div>
+      <div>
+        <div class="header-title">Sarvam-KAME Voice Agent</div>
+        <div class="header-sub">tandem architecture · sarvam apis · cpu-only</div>
+      </div>
     </div>
-    <div class="bar-wrap"><div class="bar green" id="b-filler"></div></div>
-
-    <div class="lrow">
-      <span class="lbl">STT</span><span class="val" id="v-stt">—</span>
-    </div>
-    <div class="lrow">
-      <span class="lbl">LLM oracle</span><span class="val" id="v-llm">—</span>
-    </div>
-    <div class="lrow">
-      <span class="lbl">TTS synthesis</span><span class="val" id="v-tts">—</span>
-    </div>
-    <div class="lrow" style="border-top:1px solid #1a1a1a;padding-top:7px;margin-top:4px">
-      <span class="lbl" style="color:#aaa">Oracle total</span>
-      <span class="val" id="v-oracle-total" style="color:#fff">—</span>
+    <div class="status-pill">
+      <div class="dot" id="conn-dot"></div>
+      <span id="conn-label">connecting</span>
     </div>
   </div>
-</div>
 
-<div class="cmp">
-  <h3>Latency comparison: Cascaded vs Tandem</h3>
-  <div class="crow">
-    <span class="clbl">Cascaded total</span>
-    <div class="ctrack"><div class="cfill red" id="f-cas"></div></div>
-    <span class="cval" id="c-cas" style="color:#cc8888">—</span>
+  <div class="mode-bar">
+    <button class="mtab active" id="t-tandem" onclick="setMode('tandem')">
+      Mode B — Tandem <span class="badge">KAME</span>
+    </button>
+    <button class="mtab" id="t-cascaded" onclick="setMode('cascaded')">
+      Mode A — Cascaded <span class="badge">baseline</span>
+    </button>
   </div>
-  <div class="crow">
-    <span class="clbl">Tandem filler</span>
-    <div class="ctrack"><div class="cfill green" id="f-filler"></div></div>
-    <span class="cval" id="c-filler" style="color:#88cc88">—</span>
-  </div>
-  <div class="crow">
-    <span class="clbl">Tandem oracle</span>
-    <div class="ctrack"><div class="cfill blue" id="f-oracle" style="opacity:.5"></div></div>
-    <span class="cval" id="c-oracle" style="color:#88cc88;opacity:.7">—</span>
-  </div>
-  <p class="note">Shorter bar = faster. Tandem filler arrives in ~200ms — vastly faster than cascaded.</p>
-</div>
 
-<div class="history">
-  <h3>Conversation history</h3>
-  <div id="history">No turns yet.</div>
+  <div class="main-grid">
+    <div class="agent-card">
+      <div class="orb-wrap" id="orb-wrap" onclick="toggle()">
+        <div class="orb-ring"></div>
+        <div class="orb-ring2"></div>
+        <div class="orb" id="orb">
+          <div class="wave-bars">
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+          </div>
+        </div>
+      </div>
+      <div class="orb-label" id="orb-label">Click to speak</div>
+      <div class="orb-hint" id="orb-hint">idle</div>
+      <div class="arch-pill" id="arch-info">
+        <strong>Tandem (Mode B)</strong> — filler plays instantly, oracle runs in background
+        <div class="chain">
+          <span class="chain-step">filler &lt;1ms</span>
+          <span class="chain-arrow">+</span>
+          <span class="chain-step">STT</span>
+          <span class="chain-arrow">→</span>
+          <span class="chain-step">LLM</span>
+          <span class="chain-arrow">→</span>
+          <span class="chain-step">TTS</span>
+          <span class="chain-arrow">→</span>
+          <span class="chain-step">answer</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="right-col">
+      <div class="panel">
+        <div class="panel-label">Transcript</div>
+        <div class="text-box" id="transcript">Your speech will appear here...</div>
+        <div class="panel-label" style="margin-top:12px">Response</div>
+        <div class="text-box response" id="response">AI response will appear here...</div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-label">Latency breakdown</div>
+        <div class="lat-rows">
+          <div class="lat-row">
+            <span class="lat-name">filler</span>
+            <div class="lat-track"><div class="lat-fill green" id="b-filler"></div></div>
+            <span class="lat-val" id="v-filler">—</span>
+          </div>
+          <div class="lat-divider"></div>
+          <div class="lat-row">
+            <span class="lat-name">stt</span>
+            <div class="lat-track"><div class="lat-fill amber" id="b-stt"></div></div>
+            <span class="lat-val" id="v-stt">—</span>
+          </div>
+          <div class="lat-row">
+            <span class="lat-name">llm</span>
+            <div class="lat-track"><div class="lat-fill blue" id="b-llm"></div></div>
+            <span class="lat-val" id="v-llm">—</span>
+          </div>
+          <div class="lat-row">
+            <span class="lat-name">tts</span>
+            <div class="lat-track"><div class="lat-fill green" id="b-tts"></div></div>
+            <span class="lat-val" id="v-tts">—</span>
+          </div>
+          <div class="lat-divider"></div>
+          <div class="lat-total">
+            <span>oracle total</span>
+            <span id="v-oracle-total">—</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-label">A vs B comparison</div>
+        <div class="cmp-blocks">
+
+          <!-- Mode A block -->
+          <div class="cmp-block mode-a">
+            <div class="cmp-block-header">
+              <span class="cmp-block-title">Mode A</span>
+              <span class="cmp-block-badge">cascade</span>
+            </div>
+            <div class="cmp-metric">
+              <div class="cmp-metric-label">first audio</div>
+              <div class="cmp-metric-val" id="ca-first">—</div>
+              <div class="cmp-metric-sub" style="color:var(--muted)">dead silence</div>
+            </div>
+            <div class="cmp-divider"></div>
+            <div class="cmp-metric">
+              <div class="cmp-metric-label">real answer</div>
+              <div class="cmp-metric-val" id="ca-answer">—</div>
+              <div class="cmp-metric-sub" style="color:var(--muted)">STT+LLM+TTS</div>
+            </div>
+          </div>
+
+          <!-- Mode B block -->
+          <div class="cmp-block mode-b">
+            <div class="cmp-block-header">
+              <span class="cmp-block-title">Mode B</span>
+              <span class="cmp-block-badge">tandem</span>
+            </div>
+            <div class="cmp-metric">
+              <div class="cmp-metric-label">first audio</div>
+              <div class="cmp-metric-val first-audio-val" id="cb-first">—</div>
+              <div class="cmp-metric-sub" style="color:var(--green)">filler from RAM</div>
+            </div>
+            <div class="cmp-divider"></div>
+            <div class="cmp-metric">
+              <div class="cmp-metric-label">real answer</div>
+              <div class="cmp-metric-val" id="cb-answer" style="color:var(--accent2)">—</div>
+              <div class="cmp-metric-sub" style="color:var(--muted)">oracle (background)</div>
+            </div>
+            <div class="winner-tag" id="winner-tag" style="display:none">▲ improvement</div>
+          </div>
+
+        </div>
+        <div class="cmp-note" id="cmp-summary">
+          speak in both modes to see the comparison
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="stack-vis">
+    <div class="stack-title">
+      Pipeline timeline — where time goes
+      <span id="stack-turn-label">no turns yet</span>
+    </div>
+    <div class="stacks">
+      <div class="stack-row">
+        <span class="stack-lbl">cascaded</span>
+        <div class="stack-bar">
+          <div class="s-seg stt" id="ss-stt" style="width:0%"></div>
+          <div class="s-seg llm" id="ss-llm" style="width:0%"></div>
+          <div class="s-seg tts" id="ss-tts" style="width:0%"></div>
+        </div>
+        <span class="stack-total" id="ss-total">—</span>
+      </div>
+      <div class="stack-row">
+        <span class="stack-lbl">tandem</span>
+        <div class="stack-bar">
+          <div class="s-seg filler" id="ss-filler" style="width:1%"></div>
+          <div class="s-seg stt" id="ss-stt2" style="width:0%"></div>
+          <div class="s-seg llm" id="ss-llm2" style="width:0%"></div>
+          <div class="s-seg tts" id="ss-tts2" style="width:0%"></div>
+        </div>
+        <span class="stack-total" id="ss-total2">filler &lt;1ms</span>
+      </div>
+    </div>
+    <div class="stack-axis">
+      <span>0s</span><span>2s</span><span>4s</span><span>6s</span><span>8s</span><span>10s</span>
+    </div>
+    <div class="legend">
+      <span class="leg-item" style="color:var(--amber)"><span class="leg-dot" style="background:rgba(251,191,36,.3)"></span>STT</span>
+      <span class="leg-item" style="color:var(--accent2)"><span class="leg-dot" style="background:rgba(129,140,248,.3)"></span>LLM</span>
+      <span class="leg-item" style="color:var(--green)"><span class="leg-dot" style="background:rgba(52,211,153,.25)"></span>TTS</span>
+      <span class="leg-item" style="color:var(--green)"><span class="leg-dot" style="background:rgba(52,211,153,.55)"></span>filler</span>
+    </div>
+  </div>
+
+  <div class="history-panel">
+    <div class="panel-label">Conversation history</div>
+    <div id="history"><div class="history-empty">No turns yet — speak to begin.</div></div>
+  </div>
+
 </div>
 
 <script>
-// ── state ──────────────────────────────────────────────
 let ws=null, mode='tandem', recording=false
 let audioCtx=null, processorNode=null, sourceNode=null, stream=null
 let casTotal=null, fillerLat=null, oracleTotal=null
+let historyEntries=[]
 
-// ── mode switch ────────────────────────────────────────
 function setMode(m){
   if(m===mode) return
   mode=m
-  document.getElementById('t-tandem').classList.toggle('active', m==='tandem')
-  document.getElementById('t-cascaded').classList.toggle('active', m==='cascaded')
-  document.getElementById('mode-txt').textContent = m==='tandem' ? 'Tandem mode' : 'Cascaded mode'
-  document.getElementById('arch-info').innerHTML = m==='tandem'
-    ? '<strong>Tandem (Mode B):</strong> You hear a <span class="hl">filler phrase</span> '
-    + 'immediately after speaking. The full STT→LLM→TTS pipeline runs in the '
-    + '<strong>background</strong> and delivers the real answer moments later.'
-    : '<strong>Cascaded (Mode A):</strong> Audio is sent after you stop speaking. '
-    + 'STT → LLM → TTS run sequentially. You wait <strong>3-5 seconds</strong> '
-    + 'of silence before hearing the response.'
-  if(ws?.readyState===WebSocket.OPEN){
-    ws.send(JSON.stringify({type:'set_mode', mode:m}))
+  document.getElementById('t-tandem').classList.toggle('active',m==='tandem')
+  document.getElementById('t-cascaded').classList.toggle('active',m==='cascaded')
+  const info=document.getElementById('arch-info')
+  if(m==='tandem'){
+    info.innerHTML=`<strong>Tandem (Mode B)</strong> — filler plays instantly, oracle runs in background<div class="chain"><span class="chain-step">filler &lt;1ms</span><span class="chain-arrow">+</span><span class="chain-step">STT</span><span class="chain-arrow">→</span><span class="chain-step">LLM</span><span class="chain-arrow">→</span><span class="chain-step">TTS</span><span class="chain-arrow">→</span><span class="chain-step">answer</span></div>`
+  } else {
+    info.innerHTML=`<strong>Cascaded (Mode A)</strong> — sequential pipeline, full wait before any audio<div class="chain"><span class="chain-step">STT</span><span class="chain-arrow">→</span><span class="chain-step">LLM</span><span class="chain-arrow">→</span><span class="chain-step">TTS</span><span class="chain-arrow">→</span><span class="chain-step">~8s silence</span></div>`
   }
+  if(ws?.readyState===WebSocket.OPEN) ws.send(JSON.stringify({type:'set_mode',mode:m}))
 }
 
-// ── WebSocket ──────────────────────────────────────────
 function connect(){
-  ws = new WebSocket(`ws://${location.host}/ws`)
-  ws.onopen = ()=> setStatus('Connected — speak now')
-  ws.onmessage = async (ev)=>{
-    if(ev.data instanceof ArrayBuffer || ev.data instanceof Blob){
-      const buf = await (ev.data instanceof Blob ? ev.data.arrayBuffer() : ev.data)
+  ws=new WebSocket(`ws://${location.host}/ws`)
+  ws.onopen=()=>{setConn(true,'connected');setHint('idle')}
+  ws.onmessage=async(ev)=>{
+    if(ev.data instanceof ArrayBuffer||ev.data instanceof Blob){
+      const buf=await(ev.data instanceof Blob?ev.data.arrayBuffer():ev.data)
       playAudio(buf)
-    } else {
-      const msg = JSON.parse(ev.data)
-      onMsg(msg)
-    }
+    } else { onMsg(JSON.parse(ev.data)) }
   }
-  ws.onclose = ()=> setStatus('Disconnected')
-  ws.onerror = ()=> setStatus('Connection error')
+  ws.onclose=()=>{setConn(false,'disconnected');setTimeout(connect,2000)}
+  ws.onerror=()=>{setConn(false,'error')}
 }
 
 function onMsg(msg){
-  if(msg.type==='transcript')
-    document.getElementById('transcript').textContent = msg.text
-
-  if(msg.type==='status')
-    setStatus(msg.text)
-
+  if(msg.type==='transcript'){
+    const el=document.getElementById('transcript')
+    el.textContent=msg.text; el.classList.add('filled')
+  }
+  if(msg.type==='status') setHint(msg.text)
   if(msg.type==='filler_sent'){
-    fillerLat = msg.latency
-    set('v-filler', msg.latency+'s')
-    setBar('b-filler', msg.latency, 3)
+    fillerLat=msg.latency
+    setLatRow(msg.latency,'s',3,'b-filler','v-filler')
     updateComparison()
   }
-
-  if(msg.type==='latency_stats'){
-    set('v-stt', (msg.stt||'—')+'s')
-    set('v-llm', (msg.llm||'—')+'s')
-    set('v-tts', (msg.tts||'—')+'s')
-
-    if(msg.mode==='cascaded'){
-      casTotal = msg.total
-      set('v-oracle-total', msg.total+'s')
-    } else {
-      oracleTotal = msg.oracle_total
-      set('v-oracle-total', msg.oracle_total+'s')
-      if(msg.filler_latency){
-        fillerLat = msg.filler_latency
-        set('v-filler', msg.filler_latency+'s')
-      }
-    }
-    document.getElementById('response').textContent = msg.response_text||''
-    updateComparison()
-    addHistory(msg)
-  }
-
   if(msg.type==='audio_meta'){
-    streamMode = true
-    streamSampleRate = msg.sample_rate || 24000
-    streamChannels = msg.channels || 1
-    scheduledEnd = 0
-    setStatus('Streaming response...')
+    streamMode=true
+    streamSampleRate=msg.sample_rate||24000
+    streamChannels=msg.channels||1
+    setHint('streaming response...')
   }
-
   if(msg.type==='audio_end'){
-    streamMode = false
-    setStatus('Ready')
+    streamMode=false
+    setHint('ready')
   }
+  if(msg.type==='latency_stats'){
+    setLatRow(msg.stt,'s',10,'b-stt','v-stt')
+    setLatRow(msg.llm,'s',10,'b-llm','v-llm')
+    setLatRow(msg.tts,'s',10,'b-tts','v-tts')
+    if(msg.mode==='cascaded'){
+      casTotal=msg.total
+      document.getElementById('v-oracle-total').textContent=msg.total+'s'
+    } else {
+      oracleTotal=msg.oracle_total
+      document.getElementById('v-oracle-total').textContent=msg.oracle_total+'s'
+      if(msg.filler_latency) fillerLat=msg.filler_latency
+    }
+    const el=document.getElementById('response')
+    el.textContent=msg.response_text||''; el.classList.add('filled')
+    updateComparison(); updateStackVis(msg); addHistory(msg); setHint('ready')
+  }
+}
 
-  if(msg.type==='mode_set')
-    console.log('Mode confirmed:', msg.mode)
+function setLatRow(val,unit,max,barId,valId){
+  if(val==null) return
+  document.getElementById(barId).style.width=Math.min(100,(val/max)*100)+'%'
+  document.getElementById(valId).textContent=val+unit
 }
 
 function updateComparison(){
-  const vals = [casTotal, fillerLat, oracleTotal].filter(v=>v!==null)
-  if(!vals.length) return
-  const max = Math.max(...vals)
-  if(casTotal!==null)   setBarPct('f-cas',    casTotal/max*100)
-  if(fillerLat!==null)  setBarPct('f-filler', fillerLat/max*100)
-  if(oracleTotal!==null) setBarPct('f-oracle', oracleTotal/max*100)
-  set('c-cas',    casTotal!==null   ? casTotal+'s'   : '—')
-  set('c-filler', fillerLat!==null  ? fillerLat+'s'  : '—')
-  set('c-oracle', oracleTotal!==null ? oracleTotal+'s' : '—')
+  // Mode A block — first audio = oracle total (dead silence until done)
+  if(casTotal!=null){
+    document.getElementById('ca-first').textContent=casTotal+'s'
+    document.getElementById('ca-answer').textContent=casTotal+'s'
+  }
+  // Mode B block — first audio = filler, real answer = oracle
+  if(fillerLat!=null){
+    document.getElementById('cb-first').textContent=fillerLat<0.01?'<1ms':fillerLat+'s'
+  }
+  if(oracleTotal!=null){
+    document.getElementById('cb-answer').textContent=oracleTotal+'s'
+  }
+  // Summary note + winner tag
+  if(casTotal!=null && fillerLat!=null){
+    const saved = casTotal
+    const tag = document.getElementById('winner-tag')
+    tag.style.display='inline-flex'
+    tag.textContent=`▲ ${saved}s faster first response`
+    document.getElementById('cmp-summary').innerHTML=
+      `Mode A: user waits <strong style="color:var(--red)">${casTotal}s</strong> in silence before hearing anything.<br>`+
+      `Mode B: user hears filler in <strong style="color:var(--green)">${fillerLat<0.01?'&lt;1ms':fillerLat+'s'}</strong> — `+
+      `real answer follows at <strong style="color:var(--accent2)">${oracleTotal||'?'}s</strong>.`
+  }
 }
 
-let historyEntries = []
+function updateStackVis(msg){
+  const stt=msg.stt||0,llm=msg.llm||0,tts=msg.tts||0
+  const total=stt+llm+tts
+  if(!total) return
+  const maxT=Math.max(total,casTotal||0,10)
+  const sc=v=>(v/maxT*100).toFixed(1)+'%'
+  const lb=v=>v>0.5?v+'s':''
+  document.getElementById('ss-stt').style.width=sc(stt)
+  document.getElementById('ss-stt').textContent=lb(stt)
+  document.getElementById('ss-llm').style.width=sc(llm)
+  document.getElementById('ss-llm').textContent=lb(llm)
+  document.getElementById('ss-tts').style.width=sc(tts)
+  document.getElementById('ss-tts').textContent=lb(tts)
+  document.getElementById('ss-total').textContent=total+'s'
+  document.getElementById('ss-filler').style.width='1%'
+  document.getElementById('ss-stt2').style.width=sc(stt)
+  document.getElementById('ss-llm2').style.width=sc(llm)
+  document.getElementById('ss-tts2').style.width=sc(tts)
+  document.getElementById('ss-total2').textContent='filler <1ms'
+  document.getElementById('stack-turn-label').textContent='turn '+(historyEntries.length+1)+' · last measured'
+}
+
 function addHistory(msg){
-  const entry = {
-    transcript: msg.response_text ? '…' : '',
-    response: msg.response_text||'',
-    mode: msg.mode,
-    stt: msg.stt, llm: msg.llm, tts: msg.tts,
-  }
-  const t = document.getElementById('transcript').textContent
-  if(t && t !== 'Your speech appears here...'){
-    if(historyEntries.length>0 && !historyEntries[historyEntries.length-1].transcript)
-      historyEntries[historyEntries.length-1].transcript = t
-    else
-      entry.transcript = t
-  }
-  historyEntries.push(entry)
+  const t=document.getElementById('transcript').textContent
+  const r=document.getElementById('response').textContent
+  historyEntries.unshift({
+    transcript:t==='Your speech will appear here...'?'—':t,
+    response:r==='AI response will appear here...'?'—':r,
+    mode:msg.mode,stt:msg.stt,llm:msg.llm,tts:msg.tts,
+    total:msg.mode==='cascaded'?msg.total:msg.oracle_total,
+    filler:fillerLat
+  })
+  if(historyEntries.length>20) historyEntries.pop()
   renderHistory()
 }
 
 function renderHistory(){
-  const container = document.getElementById('history')
-  if(!historyEntries.length){ container.textContent='No turns yet.'; return }
-  container.innerHTML = historyEntries.map(e=>`
-    <div class="entry">
-      <div><span class="role user">You:</span> <span class="text">${e.transcript||'—'}</span></div>
-      <div><span class="role assist">AI:</span> <span class="text">${e.response||'—'}</span></div>
-      <div class="lat">[${e.mode}] STT ${e.stt||'?'}s · LLM ${e.llm||'?'}s · TTS ${e.tts||'?'}s</div>
-    </div>
-  `).join('')
+  const c=document.getElementById('history')
+  if(!historyEntries.length){c.innerHTML='<div class="history-empty">No turns yet — speak to begin.</div>';return}
+  c.innerHTML=historyEntries.map(e=>{
+    const mc=e.mode==='tandem'?'mode-b':'mode-a'
+    const ml=e.mode==='tandem'?'B·tandem':'A·cascade'
+    const fc=e.mode==='tandem'?`<span class="h-chip filler">filler ${e.filler!=null?(e.filler<0.01?'<1ms':e.filler+'s'):'<1ms'}</span>`:''
+    return `<div class="h-entry">
+      <div class="h-row"><span class="h-role u">you</span><span class="h-text">${e.transcript}</span></div>
+      <div class="h-row"><span class="h-role a">ai</span><span class="h-text">${e.response}</span></div>
+      <div class="h-meta"><span class="h-chip ${mc}">${ml}</span>${fc}<span class="h-chip stt">stt ${e.stt||'?'}s</span><span class="h-chip llm">llm ${e.llm||'?'}s</span><span class="h-chip tts">tts ${e.tts||'?'}s</span><span class="h-chip">total ${e.total||'?'}s</span></div>
+    </div>`
+  }).join('')
 }
 
-// ── recording (manual mic click) ──────────────────────
-async function toggle(){
-  if(recording) stopRec()
-  else await startRec()
-}
+async function toggle(){ if(recording) stopRec(); else await startRec() }
 
 async function startRec(){
-  if(!ws || ws.readyState!==WebSocket.OPEN){ connect(); await new Promise(r=>setTimeout(r,600)) }
+  if(!ws||ws.readyState!==WebSocket.OPEN){connect();await new Promise(r=>setTimeout(r,700))}
   try{
-    stream = await navigator.mediaDevices.getUserMedia({
-      audio:{ sampleRate:16000, channelCount:1, echoCancellation:true,
-              noiseSuppression:true }
-    })
-    audioCtx = new AudioContext({sampleRate:16000})
-    sourceNode = audioCtx.createMediaStreamSource(stream)
-
-    await audioCtx.audioWorklet.addModule('data:application/javascript,' + encodeURIComponent(`
+    stream=await navigator.mediaDevices.getUserMedia({audio:{sampleRate:16000,channelCount:1,echoCancellation:true,noiseSuppression:true}})
+    audioCtx=new AudioContext({sampleRate:16000})
+    sourceNode=audioCtx.createMediaStreamSource(stream)
+    await audioCtx.audioWorklet.addModule('data:application/javascript,'+encodeURIComponent(`
       class RecorderProcessor extends AudioWorkletProcessor {
-        process(inputs, outputs, parameters) {
-          const input = inputs[0];
-          if (input && input[0]) {
-            const int16 = new Int16Array(input[0].length);
-            for (let i = 0; i < input[0].length; i++)
-              int16[i] = Math.max(-32768, Math.min(32767, Math.round(input[0][i] * 32768)));
-            this.port.postMessage(int16.buffer, [int16.buffer]);
-          }
-          return true;
-        }
+        process(inputs){const ch=inputs[0];if(ch&&ch[0]){const i16=new Int16Array(ch[0].length);for(let i=0;i<ch[0].length;i++)i16[i]=Math.max(-32768,Math.min(32767,Math.round(ch[0][i]*32768)));this.port.postMessage(i16.buffer,[i16.buffer]);}return true;}
       }
-      registerProcessor("recorder-processor", RecorderProcessor);
+      registerProcessor("recorder-processor",RecorderProcessor);
     `))
-
-    processorNode = new AudioWorkletNode(audioCtx, "recorder-processor")
-    processorNode.port.onmessage = (e) => {
-      if(ws?.readyState===WebSocket.OPEN) ws.send(e.data)
-    }
+    processorNode=new AudioWorkletNode(audioCtx,'recorder-processor')
+    processorNode.port.onmessage=e=>{if(ws?.readyState===WebSocket.OPEN)ws.send(e.data)}
     sourceNode.connect(processorNode)
+    // Ensure playback AudioContext is alive (within user gesture so resume works).
+    // Play a silent buffer to prevent Chrome from suspending it while idle between turns.
+    if(!playCtx)playCtx=new AudioContext({sampleRate:24000})
+    if(playCtx.state==='suspended'){try{await playCtx.resume()}catch(e){}}
+    const sil=playCtx.createBuffer(1,playCtx.sampleRate,playCtx.sampleRate)
+    const ss=playCtx.createBufferSource();ss.buffer=sil;ss.connect(playCtx.destination);ss.start()
     recording=true
-    document.getElementById('mic').classList.add('rec')
-    document.getElementById('mic').textContent='⏹'
-    setStatus('Recording...')
-  } catch(e){
-    setStatus('Mic error: ' + e.message)
-  }
+    document.getElementById('orb-wrap').classList.add('recording')
+    document.getElementById('orb-label').textContent='Recording... click to stop'
+    setHint('listening')
+  }catch(e){setHint('mic error: '+e.message)}
 }
 
 function stopRec(){
-  if(processorNode){ processorNode.disconnect(); sourceNode.disconnect() }
-  if(audioCtx) audioCtx.close()
-  if(stream) stream.getTracks().forEach(t=>t.stop())
+  if(processorNode){processorNode.disconnect();sourceNode.disconnect()}
+  if(audioCtx)audioCtx.close()
+  if(stream)stream.getTracks().forEach(t=>t.stop())
   recording=false
-  document.getElementById('mic').classList.remove('rec')
-  document.getElementById('mic').textContent='🎤'
-  setStatus('Processing...')
-  if(ws?.readyState===WebSocket.OPEN)
-    ws.send(JSON.stringify({type:'end_of_speech'}))
+  document.getElementById('orb-wrap').classList.remove('recording')
+  document.getElementById('orb-label').textContent='Click to speak'
+  setHint('processing...')
+  if(ws?.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'end_of_speech'}))
 }
 
-// ── audio playback (WAV + streaming PCM) ──────────────
-let playCtx=null
-let streamMode=false
-let streamSampleRate=24000
-let streamChannels=1
-let scheduledEnd=0
-
-async function playAudio(buf){
-  if(streamMode) await playPCM(buf)
-  else await playWAV(buf)
-}
-
+let playCtx=null,streamMode=false,streamSampleRate=24000,streamChannels=1,scheduledEnd=0
+async function playAudio(buf){if(streamMode)await playPCM(buf);else await playWAV(buf)}
 async function playWAV(buf){
-  if(!playCtx) playCtx = new AudioContext({sampleRate:24000})
-  if(playCtx.state==='suspended') await playCtx.resume()
+  if(!playCtx)playCtx=new AudioContext({sampleRate:24000})
+  if(playCtx.state==='suspended'){try{await playCtx.resume()}catch(e){}}
   try{
-    const decoded = await playCtx.decodeAudioData(buf.slice(0))
-    const src = playCtx.createBufferSource()
-    src.buffer = decoded
+    const dec=await playCtx.decodeAudioData(buf.slice(0))
+    const src=playCtx.createBufferSource()
+    src.buffer=dec
     src.connect(playCtx.destination)
-    const now = playCtx.currentTime
+    const now=playCtx.currentTime
     src.start(now)
-    scheduledEnd = now + decoded.duration
-  } catch(e){ console.error('WAV decode error:', e) }
+    scheduledEnd=now+dec.duration
+  }catch(e){console.error('wav err',e)}
 }
-
 async function playPCM(buf){
-  if(!playCtx) playCtx = new AudioContext({sampleRate:streamSampleRate})
-  if(playCtx.state==='suspended') await playCtx.resume()
-  const int16 = new Int16Array(buf)
-  const float32 = new Float32Array(int16.length)
-  for(let i=0; i<int16.length; i++)
-    float32[i] = int16[i] / 32768
-  const buffer = playCtx.createBuffer(streamChannels, float32.length, streamSampleRate)
-  buffer.copyToChannel(float32, 0)
-  const src = playCtx.createBufferSource()
-  src.buffer = buffer
-  src.connect(playCtx.destination)
-  const now = playCtx.currentTime
-  const startTime = Math.max(now, scheduledEnd)
-  src.start(startTime)
-  scheduledEnd = startTime + buffer.duration
+  if(!playCtx)playCtx=new AudioContext({sampleRate:streamSampleRate})
+  if(playCtx.state==='suspended')await playCtx.resume()
+  const i16=new Int16Array(buf);const f32=new Float32Array(i16.length)
+  for(let i=0;i<i16.length;i++)f32[i]=i16[i]/32768
+  const ab=playCtx.createBuffer(streamChannels,f32.length,streamSampleRate)
+  ab.copyToChannel(f32,0)
+  const src=playCtx.createBufferSource();src.buffer=ab;src.connect(playCtx.destination)
+  const now=playCtx.currentTime;const start=Math.max(now,scheduledEnd);src.start(start);scheduledEnd=start+ab.duration
 }
 
-// ── helpers ────────────────────────────────────────────
-const set=(id,v)=> document.getElementById(id).textContent=v
-function setStatus(t){ document.getElementById('status-txt').textContent=t }
-function setBar(id, val, maxVal){
-  document.getElementById(id).style.width = Math.min(100, val/maxVal*100)+'%'
-}
-function setBarPct(id, pct){
-  document.getElementById(id).style.width = pct+'%'
-}
+function setConn(ok,label){document.getElementById('conn-dot').className='dot'+(ok?' on':'');document.getElementById('conn-label').textContent=label}
+function setHint(t){document.getElementById('orb-hint').textContent=t}
+
+connect()
 </script>
 </body>
 </html>
