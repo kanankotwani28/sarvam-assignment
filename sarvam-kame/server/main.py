@@ -15,16 +15,21 @@ app = FastAPI(title="Sarvam-KAME Voice Agent")
 # ── Serve browser UI ─────────────────────────
 @app.get("/")
 async def index():
-    return HTMLResponse(Path("client/index.html").read_text())
+    return HTMLResponse(Path("client/index.html").read_text(encoding="utf-8"))
 
-# ── Load KAME model on startup ────────────────
+# ── Load KAME model on startup (non-blocking) ────────────────
 @app.on_event("startup")
 async def startup():
-    loop = asyncio.get_event_loop()
-    # Run model load in thread so it doesn't block the event loop
-    await loop.run_in_executor(None, kame.load)
     print(f"[SERVER] Ready at http://{HOST}:{PORT}")
-    print(f"[SERVER] KAME loaded: {kame.loaded}")
+    # Load KAME in background thread (will download ~4GB on first run)
+    def load_kame():
+        import time
+        print("[SERVER] Loading KAME in background (first run downloads ~4GB)...")
+        kame.load()
+        print(f"[SERVER] KAME loaded: {kame.loaded}")
+    import threading
+    thread = threading.Thread(target=load_kame, daemon=True)
+    thread.start()
 
 
 # ════════════════════════════════════════════

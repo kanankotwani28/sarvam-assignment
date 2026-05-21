@@ -167,8 +167,10 @@ function connect(){
   ws.onopen = ()=> setStatus('Connected — speak now')
 
   ws.onmessage = async (ev)=>{
-    if(ev.data instanceof Blob){
-      const buf = await ev.data.arrayBuffer()
+    // Handle audio bytes (ArrayBuffer or Blob)
+    if(ev.data instanceof ArrayBuffer || ev.data instanceof Blob){
+      const buf = await (ev.data instanceof Blob ? ev.data.arrayBuffer() : Promise.resolve(ev.data))
+      console.log('Received audio:', buf.byteLength, 'bytes')
       queueAudio(buf)
     } else {
       const msg = JSON.parse(ev.data)
@@ -225,6 +227,8 @@ function updateComparison(){
 }
 
 // ── recording ──────────────────────────────────────────
+let audioContext=null, processorNode=null, sourceNode=null
+
 async function toggle(){
   if(recording) stopRec()
   else await startRec()
@@ -237,24 +241,53 @@ async function startRec(){
       audio:{ sampleRate:16000, channelCount:1, echoCancellation:true,
               noiseSuppression:true }
     })
-    mediaRecorder = new MediaRecorder(stream, {mimeType:'audio/webm'})
-    mediaRecorder.ondataavailable = e=>{
-      if(e.data.size>0 && ws?.readyState===WebSocket.OPEN)
-        e.data.arrayBuffer().then(b=> ws.send(b))
+    audioContext = new AudioContext({sampleRate:16000})
+    sourceNode = audioContext.createMediaStreamSource(stream)
+    
+    // Using AudioWorklet instead of deprecated ScriptProcessor
+    await audioContext.audioWorklet.addModule('data:application/javascript,' + encodeURIComponent(`
+      class RecorderProcessor extends AudioWorkletProcessor {
+        process(inputs, outputs, parameters) {
+          const input = inputs[0];
+          if (input && input[0]) {
+            const int16 = new Int16Array(input[0].length);
+            for (let i = 0; i < input[0].length; i++) {
+              int16[i] = Math.max(-32768, Math.min(32767, Math.round(input[0][i] * 32768)));
+            }
+            this.port.postMessage(int16.buffer, [int16.buffer]);
+          }
+          return true;
+        }
+      }
+      registerProcessor("recorder-processor", RecorderProcessor);
+    `))
+    
+    processorNode = new AudioWorkletNode(audioContext, "recorder-processor")
+    processorNode.port.onmessage = (e) => {
+      if(ws?.readyState===WebSocket.OPEN) ws.send(e.data)
     }
-    mediaRecorder.start(200)   // 200ms chunks
+    sourceNode.connect(processorNode)
+    processorNode.connect(audioContext.destination)
+    
     recording=true
     document.getElementById('mic').classList.add('rec')
     document.getElementById('mic').textContent='⏹'
     setStatus('Recording...')
   } catch(e){
-    setStatus('Mic access denied — allow mic in browser')
+    setStatus('Mic error: ' + e.message)
   }
 }
 
 function stopRec(){
-  mediaRecorder?.stop()
-  mediaRecorder?.stream.getTracks().forEach(t=>t.stop())
+  if(mediaRecorder){
+    mediaRecorder?.stop()
+    mediaRecorder?.stream.getTracks().forEach(t=>t.stop())
+  }
+  if(processorNode){
+    processorNode?.disconnect()
+    sourceNode?.disconnect()
+    audioContext?.close()
+  }
   recording=false
   document.getElementById('mic').classList.remove('rec')
   document.getElementById('mic').textContent='🎤'
@@ -264,18 +297,26 @@ function stopRec(){
 }
 
 // ── audio playback ─────────────────────────────────────
+let playCtx=null
 async function queueAudio(buf){
-  if(!audioCtx) audioCtx = new AudioContext({sampleRate:24000})
+  if(!playCtx) {
+    playCtx = new AudioContext({sampleRate:24000})
+    console.log('Created AudioContext, state:', playCtx.state)
+  }
+  if(playCtx.state === 'suspended') {
+    await playCtx.resume()
+    console.log('Resumed AudioContext')
+  }
   try{
-    const decoded = await audioCtx.decodeAudioData(buf.slice(0))
-    const src = audioCtx.createBufferSource()
+    const decoded = await playCtx.decodeAudioData(buf.slice(0))
+    console.log('Decoded audio, duration:', decoded.duration, 's')
+    const src = playCtx.createBufferSource()
     src.buffer = decoded
-    src.connect(audioCtx.destination)
-    // Schedule to play after any currently queued audio
-    const when = Math.max(audioCtx.currentTime, playHead)
-    src.start(when)
-    playHead = when + decoded.duration
-  } catch(e){ console.warn('Audio decode:',e) }
+    src.connect(playCtx.destination)
+    src.onended = () => console.log('Audio playback ended')
+    src.start()
+    console.log('Audio started playing')
+  } catch(e){ console.error('Audio decode:',e) }
 }
 
 // ── helpers ────────────────────────────────────────────
