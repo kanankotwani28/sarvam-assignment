@@ -12,59 +12,49 @@ import io
 
 
 # ── Filler phrases by category ──────────────────────────
+# Each phrase is 2-4 sentences — natural, conversational, ~4-8s spoken.
+# Only 2 per category keeps startup preload fast.
 FILLER_CATEGORIES = {
     "general": {
         "en-IN": [
-            "Let me look that up for you.",
-            "One moment please.",
-            "Give me a second.",
-            "I'm checking on that.",
-            "Just a moment.",
+            "Let me look that up for you. I'll find the information you need and be right back with an answer. Give me just a moment.",
+            "Thanks for your question. Let me gather the details for you. I'll have everything ready in just a few seconds.",
+            "Sure, let me check on that. I'm pulling together the information now and will have an answer for you shortly.",
         ],
         "hi-IN": [
-            "कृपया एक क्षण प्रतीक्षा करें।",
-            "मैं देख रहा हूँ।",
-            "एक पल रुकिए।",
-            "मैं अभी जवाब लेकर आता हूँ।",
-            "ज़रा रुकिए।",
+            "आपके सवाल के लिए शुक्रिया। मैं अभी आपके लिए जानकारी ढूंढ रहा हूँ। कृपया एक पल रुकिए, मैं तुरंत जवाब लेकर आ रहा हूँ।",
+            "मैं देख रहा हूँ। सारी जानकारी इकट्ठा कर रहा हूँ। बस कुछ ही पलों में आपको जवाब मिल जाएगा।",
         ],
     },
     "knowledge": {
         "en-IN": [
-            "Let me find that information.",
-            "Looking that up now.",
-            "Let me search for that.",
-            "Give me a moment to find out.",
+            "That's a great question. Let me search through my knowledge base to find the most accurate information for you. I'll have an answer in just a moment.",
+            "Let me find that information for you. I'm looking through my sources to make sure I give you the best possible answer. Bear with me for a few seconds.",
+            "I'm looking that up right now. There's quite a bit of information on this topic, so let me find the most relevant details for you. I'll be right back.",
         ],
         "hi-IN": [
-            "मैं वह जानकारी ढूंढ रहा हूँ।",
-            "मैं अभी देखता हूँ।",
-            "वह जानकारी लेकर आता हूँ।",
-            "एक क्षण, मैं देख रहा हूँ।",
+            "यह बहुत अच्छा सवाल है। मैं आपके लिए सबसे सटीक जानकारी ढूंढ रहा हूँ। बस एक पल का धैर्य रखें, मैं अभी जवाब लेकर आता हूँ।",
+            "मैं वह जानकारी खोज रहा हूँ। कई स्रोतों से सही जानकारी निकाल रहा हूँ ताकि आपको सबसे अच्छा जवाब मिल सके।",
         ],
     },
     "time_date": {
         "en-IN": [
-            "Let me check the time.",
-            "Checking the time now.",
-            "One moment, checking the date and time.",
+            "Let me check the current time and date for you. I'm looking up the accurate details right now and will tell you in just a moment.",
+            "I'll check the time for you right away. Let me look up the exact current time and date from my sources.",
         ],
         "hi-IN": [
-            "मैं समय देख रहा हूँ।",
-            "समय देख रहा हूँ।",
-            "एक पल, समय और तारीख देख रहा हूँ।",
+            "मैं अभी आपके लिए समय और तारीख देख रहा हूँ। सटीक जानकारी लेकर एक पल में आपको बताता हूँ।",
+            "समय देख रहा हूँ। वर्तमान समय और तारीख की पुष्टि कर रहा हूँ, बस एक सेकंड।",
         ],
     },
     "math": {
         "en-IN": [
-            "Let me calculate that.",
-            "Working out the math.",
-            "Doing the calculation now.",
+            "Let me work out the calculation for you. I'm going through the numbers step by step to make sure everything is accurate. I'll have the result in just a moment.",
+            "I'm calculating that right now. Let me double check the numbers to ensure the answer is correct. Give me just a few seconds and I'll have it for you.",
         ],
         "hi-IN": [
-            "मैं हिसाब कर रहा हूँ।",
-            "गणना कर रहा हूँ।",
-            "हिसाब लगा रहा हूँ।",
+            "मैं आपके लिए हिसाब कर रहा हूँ। सभी संख्याओं को ध्यान से जाँच रहा हूँ ताकि सही जवाब मिल सके। बस एक पल में परिणाम दे दूँगा।",
+            "गणना कर रहा हूँ। एक बार सब कुछ दोबारा जाँच लेता हूँ ताकि कोई गलती न रहे। तुरंत जवाब दे रहा हूँ।",
         ],
     },
 }
@@ -188,7 +178,7 @@ class TandemEngine:
 
     def get_filler(self, language: str = DEFAULT_LANG,
                    category: str = DEFAULT_CATEGORY,
-                   count: int = 4) -> bytes:
+                   count: int = 2) -> bytes:
         """
         Return a concatenated sequence of `count` filler phrases.
         Single WAV — plays continuously to cover oracle latency.
