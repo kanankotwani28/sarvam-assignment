@@ -14,7 +14,7 @@ from .metrics import SessionMetrics
 app = FastAPI(title="Sarvam-KAME Voice Agent")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://sarvam-assignment-lqji.vercel.app"],
+    allow_origins=["https://sarvam-assignment-a1ls.vercel.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
