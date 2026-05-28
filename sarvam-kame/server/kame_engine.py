@@ -173,7 +173,7 @@ class TandemEngine:
         new_header = bytearray(header)
         struct.pack_into('<I', new_header, 4, 36 + data_size)  # RIFF size
         struct.pack_into('<I', new_header, 40, data_size)       # data chunk size
-        chunks[0] = bytes(new_header)
+        chunks[0] = bytes(new_header) + wavs[0][44:]
         return b"".join(chunks)
 
     def get_filler(self, language: str = DEFAULT_LANG,
