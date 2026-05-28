@@ -1302,6 +1302,7 @@ body {
      JAVASCRIPT (same logic, new skin)
 ══════════════════════════════════════ -->
 <script>
+const BACKEND_URL = 'wss://sarvam-assignment-production.up.railway.app'
 let ws=null, mode='tandem', recording=false
 let audioCtx=null, processorNode=null, sourceNode=null, stream=null
 let casTotal=null, fillerLat=null, oracleTotal=null
@@ -1324,7 +1325,7 @@ function setMode(m){
 }
 
 function connect(){
-  ws=new WebSocket(`ws://${location.host}/ws`)
+  ws=new WebSocket(`${BACKEND_URL}/ws`)
   ws.onopen=()=>{setConn(true,'connected');setHint('idle')}
   ws.onmessage=async(ev)=>{
     if(ev.data instanceof ArrayBuffer||ev.data instanceof Blob){

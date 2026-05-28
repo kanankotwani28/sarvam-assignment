@@ -3,6 +3,7 @@ import json
 import time
 from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 
 from .config import HOST, PORT
@@ -11,6 +12,13 @@ from .kame_engine import tandem, classify_question
 from .metrics import SessionMetrics
 
 app = FastAPI(title="Sarvam-KAME Voice Agent")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://sarvam-assignment-lqji.vercel.app"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/")
