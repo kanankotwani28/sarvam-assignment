@@ -1326,6 +1326,7 @@ function setMode(m){
 
 function connect(){
   ws=new WebSocket(`${BACKEND_URL}/ws`)
+  ws.binaryType='arraybuffer'
   ws.onopen=()=>{setConn(true,'connected');setHint('idle')}
   ws.onmessage=async(ev)=>{
     if(ev.data instanceof ArrayBuffer||ev.data instanceof Blob){
