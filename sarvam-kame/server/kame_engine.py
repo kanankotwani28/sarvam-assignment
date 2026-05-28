@@ -121,7 +121,7 @@ class TandemEngine:
                 self.fillers[lang] = {"general": [audio]}
                 print(f"[TANDEM]  {lang}/general: {len(audio)} bytes ({lat:.2f}s)")
             else:
-                self.fillers[lang] = {"general": [b'\x00\x00' * 24000]}
+                self.fillers[lang] = {"general": [self._make_silence_wav(1.0)]}
                 print(f"[TANDEM]  {lang}/general: TTS failed, silence fallback")
 
         self.loaded = True
@@ -175,6 +175,28 @@ class TandemEngine:
         struct.pack_into('<I', new_header, 40, data_size)       # data chunk size
         chunks[0] = bytes(new_header) + wavs[0][44:]
         return b"".join(chunks)
+
+    @staticmethod
+    def _make_silence_wav(duration_sec: float = 1.0) -> bytes:
+        """Generate a valid WAV file containing silence."""
+        sample_rate = 24000
+        num_samples = int(sample_rate * duration_sec)
+        data_size = num_samples * 2  # 16-bit mono
+        header = bytearray(44)
+        header[0:4] = b'RIFF'
+        struct.pack_into('<I', header, 4, 36 + data_size)
+        header[8:12] = b'WAVE'
+        header[12:16] = b'fmt '
+        struct.pack_into('<I', header, 16, 16)        # chunk size
+        struct.pack_into('<H', header, 20, 1)          # PCM
+        struct.pack_into('<H', header, 22, 1)          # mono
+        struct.pack_into('<I', header, 24, sample_rate)
+        struct.pack_into('<I', header, 28, sample_rate * 2)
+        struct.pack_into('<H', header, 32, 2)          # block align
+        struct.pack_into('<H', header, 34, 16)         # bits per sample
+        header[36:40] = b'data'
+        struct.pack_into('<I', header, 40, data_size)
+        return bytes(header) + b'\x00\x00' * num_samples
 
     def get_filler(self, language: str = DEFAULT_LANG,
                    category: str = DEFAULT_CATEGORY,
